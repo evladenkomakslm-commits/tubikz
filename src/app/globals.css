@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  background: #0a0a0b;
+  color: #ededf0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Smooth, momentum-like scroll for chat lists */
+.scroll-smooth-y {
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a32 transparent;
+}
+
+.scroll-smooth-y::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scroll-smooth-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-smooth-y::-webkit-scrollbar-thumb {
+  background: #2a2a32;
+  border-radius: 8px;
+}
+
+.scroll-smooth-y::-webkit-scrollbar-thumb:hover {
+  background: #3a3a44;
+}
+
+/* Subtle gradient mesh used on welcome */
+.mesh-bg {
+  background:
+    radial-gradient(60% 50% at 20% 20%, rgba(124, 92, 255, 0.18), transparent 60%),
+    radial-gradient(50% 40% at 80% 30%, rgba(62, 207, 142, 0.10), transparent 60%),
+    radial-gradient(70% 50% at 50% 100%, rgba(255, 92, 161, 0.10), transparent 60%),
+    #0a0a0b;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.float { animation: float 6s ease-in-out infinite; }
+
+/* Form input base */
+.tk-input {
+  @apply w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 text-text
+         placeholder:text-text-subtle outline-none transition-all
+         focus:border-accent focus:ring-2 focus:ring-accent/30;
+}
+
+.tk-btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-medium
+         transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+}
+
+.tk-btn-primary {
+  @apply tk-btn bg-accent text-white hover:bg-accent-hover shadow-lg shadow-accent/20;
+}
+
+.tk-btn-ghost {
+  @apply tk-btn bg-bg-elevated text-text hover:bg-bg-hover border border-border;
+}

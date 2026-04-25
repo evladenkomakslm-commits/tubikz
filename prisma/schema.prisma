@@ -1,0 +1,142 @@
+// Tubikz schema (PostgreSQL).
+// Локально можно использовать docker postgres или Neon (тот же URL).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String   @unique
+  passwordHash  String
+  displayName   String?
+  avatarUrl     String?
+  bio           String?
+  isOnline      Boolean  @default(false)
+  lastSeenAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sentMessages     Message[]      @relation("MessageSender")
+  conversations    Participant[]
+  sentRequests     FriendRequest[] @relation("RequestFrom")
+  receivedRequests FriendRequest[] @relation("RequestTo")
+  friendsOf        Friendship[]    @relation("FriendshipOwner")
+  friends          Friendship[]    @relation("FriendshipFriend")
+  readReceipts     MessageRead[]
+
+  @@index([username])
+  @@index([email])
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model FriendRequest {
+  id         String        @id @default(cuid())
+  fromUserId String
+  toUserId   String
+  status     RequestStatus @default(PENDING)
+  createdAt  DateTime      @default(now())
+
+  fromUser User @relation("RequestFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User @relation("RequestTo", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status])
+}
+
+model Friendship {
+  id        String   @id @default(cuid())
+  ownerId   String
+  friendId  String
+  createdAt DateTime @default(now())
+
+  owner  User @relation("FriendshipOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendshipFriend", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, friendId])
+  @@index([ownerId])
+}
+
+enum ConversationType {
+  DIRECT
+  GROUP
+}
+
+model Conversation {
+  id        String           @id @default(cuid())
+  type      ConversationType @default(DIRECT)
+  title     String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  participants Participant[]
+  messages     Message[]
+
+  @@index([updatedAt])
+}
+
+model Participant {
+  id             String   @id @default(cuid())
+  userId         String
+  conversationId String
+  joinedAt       DateTime @default(now())
+  lastReadAt     DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, conversationId])
+  @@index([conversationId])
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  VOICE
+  FILE
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  senderId       String
+  type           MessageType @default(TEXT)
+  content        String?
+  mediaUrl       String?
+  mediaMimeType  String?
+  durationMs     Int?
+  createdAt      DateTime    @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+
+  conversation Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  reads        MessageRead[]
+
+  @@index([conversationId, createdAt])
+}
+
+model MessageRead {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  readAt    DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+}

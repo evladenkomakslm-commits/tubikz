@@ -1,0 +1,25 @@
+[Unit]
+Description=Tubikz messenger (Next.js + Socket.io)
+After=network.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=@APP_DIR@/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npx tsx server.ts
+Restart=on-failure
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=10
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=@APP_DIR@/public/uploads @APP_DIR@/prisma @APP_DIR@/.next
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

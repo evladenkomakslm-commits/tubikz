@@ -1,0 +1,28 @@
+# Render Blueprint для ₮ubikz.
+# Через Render Dashboard → Blueprints → "New Blueprint Instance" подхватит этот файл.
+
+services:
+  - type: web
+    name: tubikz
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: |
+      npm ci && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build
+    startCommand: npx tsx server.ts
+    healthCheckPath: /login
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false                     # задашь руками в Dashboard (Neon URL)
+      - key: NEXTAUTH_SECRET
+        generateValue: true             # Render сгенерирует сам
+      - key: NEXTAUTH_URL
+        sync: false                     # будет https://<service>.onrender.com
+      - key: UPLOADTHING_TOKEN
+        sync: false                     # из UploadThing dashboard
