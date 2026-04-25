@@ -39,15 +39,50 @@ void app.prepare().then(() => {
   io.use(async (socket, next) => {
     try {
       const cookieHeader = socket.handshake.headers.cookie ?? '';
+      const cookieNames = cookieHeader
+        .split(';')
+        .map((c) => c.trim().split('=')[0])
+        .filter(Boolean);
+      const isHttps = (process.env.NEXTAUTH_URL ?? '').startsWith('https://');
+      const expectedCookieName = isHttps
+        ? '__Secure-next-auth.session-token'
+        : 'next-auth.session-token';
+
       const fakeReq = { headers: { cookie: cookieHeader } } as Parameters<typeof getToken>[0]['req'];
-      const token = await getToken({
+
+      // Пробуем оба варианта имени cookie — иногда detection работает странно за proxy
+      let token = await getToken({
         req: fakeReq,
         secret: process.env.NEXTAUTH_SECRET!,
       });
+      if (!token?.uid) {
+        token = await getToken({
+          req: fakeReq,
+          secret: process.env.NEXTAUTH_SECRET!,
+          secureCookie: true,
+          cookieName: '__Secure-next-auth.session-token',
+        });
+      }
+      if (!token?.uid) {
+        token = await getToken({
+          req: fakeReq,
+          secret: process.env.NEXTAUTH_SECRET!,
+          secureCookie: false,
+          cookieName: 'next-auth.session-token',
+        });
+      }
+
+      console.log(
+        `[socket-auth] cookies=[${cookieNames.join(',')}] expected=${expectedCookieName} ` +
+        `nextauth_url=${process.env.NEXTAUTH_URL} ` +
+        `result=${token?.uid ? 'ok uid=' + (token.uid as string).slice(0, 8) : 'NO_TOKEN'}`,
+      );
+
       if (!token?.uid) return next(new Error('unauthorized'));
       (socket.data as { userId?: string }).userId = token.uid as string;
       next();
     } catch (err) {
+      console.error('[socket-auth] error', err);
       next(err instanceof Error ? err : new Error('auth failed'));
     }
   });
