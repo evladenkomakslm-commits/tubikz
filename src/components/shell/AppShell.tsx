@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { Sidebar } from './Sidebar';
 import { CallProvider } from '@/components/calls/CallProvider';
+import { DebugBar } from '@/components/debug/DebugBar';
 
 export function AppShell({
   user,
@@ -30,6 +31,7 @@ export function AppShell({
         <Sidebar user={user} />
         <div className="flex-1 min-w-0 flex flex-col bg-bg-subtle">{children}</div>
       </div>
+      <DebugBar />
     </CallProvider>
   );
 }

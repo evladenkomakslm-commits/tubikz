@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon, Mic, Send, X, Loader2, Square } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/Toast';
+import { useDebugStore } from '@/lib/debug-store';
+import { useSession } from 'next-auth/react';
 import type { ChatMessage } from '@/types';
 
 type SendInput = {
@@ -33,6 +35,8 @@ export function Composer({
   const fileVideoRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const toast = useToast();
+  const debugToggle = useDebugStore((s) => s.toggle);
+  const { data: session } = useSession();
 
   useEffect(() => {
     return () => {
@@ -55,6 +59,36 @@ export function Composer({
   async function submit() {
     const v = text.trim();
     if (!v) return;
+
+    // Slash-команды — не отправляются, обрабатываются локально.
+    if (v.startsWith('/')) {
+      const cmd = v.slice(1).split(/\s+/)[0].toLowerCase();
+      if (cmd === 'debug') {
+        debugToggle();
+        toast.push({ message: 'debug-панель переключена' });
+        setText('');
+        if (taRef.current) taRef.current.style.height = 'auto';
+        return;
+      }
+      if (cmd === 'whoami') {
+        toast.push({
+          message: `id: ${session?.user?.id ?? '—'} · @${session?.user?.username ?? '—'}`,
+        });
+        setText('');
+        if (taRef.current) taRef.current.style.height = 'auto';
+        return;
+      }
+      if (cmd === 'help') {
+        toast.push({
+          message: '/debug · /whoami · /help — команды не отправляются',
+        });
+        setText('');
+        if (taRef.current) taRef.current.style.height = 'auto';
+        return;
+      }
+      // Неизвестная команда — отправим как обычный текст.
+    }
+
     setText('');
     if (taRef.current) taRef.current.style.height = 'auto';
     onTyping(false);
