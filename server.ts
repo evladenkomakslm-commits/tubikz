@@ -83,6 +83,24 @@ void app.prepare().then(() => {
       if (typeof conversationId === 'string') socket.join(`conv:${conversationId}`);
     });
 
+    // ===== Call signaling (1-on-1) =====
+    // All events carry { peerId } indicating the *other* user. We forward to user:<peerId>.
+    const fwd = (event: string) => (payload: { peerId: string } & Record<string, unknown>) => {
+      if (!payload?.peerId || typeof payload.peerId !== 'string') return;
+      io.to(`user:${payload.peerId}`).emit(event, {
+        ...payload,
+        from: userId,
+      });
+    };
+
+    socket.on('call:invite', fwd('call:invite'));
+    socket.on('call:answer', fwd('call:answer'));
+    socket.on('call:ice', fwd('call:ice'));
+    socket.on('call:cancel', fwd('call:cancel'));
+    socket.on('call:decline', fwd('call:decline'));
+    socket.on('call:hangup', fwd('call:hangup'));
+    socket.on('call:renegotiate', fwd('call:renegotiate'));
+
     socket.on('disconnect', async () => {
       const remaining = await io.in(`user:${userId}`).fetchSockets();
       if (remaining.length === 0) {

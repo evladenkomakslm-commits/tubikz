@@ -2,6 +2,7 @@
 import { useEffect } from 'react';
 import { useSocket } from '@/hooks/useSocket';
 import { Sidebar } from './Sidebar';
+import { CallProvider } from '@/components/calls/CallProvider';
 
 export function AppShell({
   user,
@@ -24,9 +25,11 @@ export function AppShell({
   }, [socket]);
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-bg">
-      <Sidebar user={user} />
-      <div className="flex-1 min-w-0 flex flex-col bg-bg-subtle">{children}</div>
-    </div>
+    <CallProvider>
+      <div className="h-screen w-screen flex overflow-hidden bg-bg">
+        <Sidebar user={user} />
+        <div className="flex-1 min-w-0 flex flex-col bg-bg-subtle">{children}</div>
+      </div>
+    </CallProvider>
   );
 }

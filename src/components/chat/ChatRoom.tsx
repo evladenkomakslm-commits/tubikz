@@ -7,6 +7,7 @@ import { useSocket } from '@/hooks/useSocket';
 import { MessageList } from './MessageList';
 import { Composer } from './Composer';
 import { TypingIndicator } from './TypingIndicator';
+import { CallButton } from '@/components/calls/CallButton';
 import type { ChatMessage } from '@/types';
 import { formatTime } from '@/lib/utils';
 
@@ -197,6 +198,15 @@ export function ChatRoom({
                 )}
               </div>
             </div>
+            <CallButton
+              peer={{
+                id: peer.id,
+                username: peer.username,
+                displayName: peer.displayName,
+                avatarUrl: peer.avatarUrl,
+              }}
+              conversationId={conversationId}
+            />
           </>
         )}
       </header>

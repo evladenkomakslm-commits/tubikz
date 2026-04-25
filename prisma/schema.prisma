@@ -30,6 +30,8 @@ model User {
   friendsOf        Friendship[]    @relation("FriendshipOwner")
   friends          Friendship[]    @relation("FriendshipFriend")
   readReceipts     MessageRead[]
+  outgoingCalls    Call[]         @relation("CallCaller")
+  incomingCalls    Call[]         @relation("CallCallee")
 
   @@index([username])
   @@index([email])
@@ -82,6 +84,7 @@ model Conversation {
 
   participants Participant[]
   messages     Message[]
+  calls        Call[]
 
   @@index([updatedAt])
 }
@@ -106,6 +109,42 @@ enum MessageType {
   VIDEO
   VOICE
   FILE
+  CALL
+}
+
+enum CallType {
+  AUDIO
+  VIDEO
+}
+
+enum CallStatus {
+  RINGING
+  CONNECTING
+  ACTIVE
+  ENDED
+  MISSED
+  DECLINED
+  FAILED
+}
+
+model Call {
+  id             String     @id @default(cuid())
+  conversationId String
+  callerId       String
+  calleeId       String
+  type           CallType   @default(AUDIO)
+  status         CallStatus @default(RINGING)
+  startedAt      DateTime   @default(now())
+  answeredAt     DateTime?
+  endedAt        DateTime?
+  durationMs     Int?
+  endReason      String?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  caller       User         @relation("CallCaller", fields: [callerId], references: [id], onDelete: Cascade)
+  callee       User         @relation("CallCallee", fields: [calleeId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, startedAt])
 }
 
 model Message {
@@ -117,6 +156,7 @@ model Message {
   mediaUrl       String?
   mediaMimeType  String?
   durationMs     Int?
+  callId         String?
   createdAt      DateTime    @default(now())
   editedAt       DateTime?
   deletedAt      DateTime?

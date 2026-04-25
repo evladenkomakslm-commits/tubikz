@@ -13,11 +13,12 @@ export interface ChatMessage {
   id: string;
   conversationId: string;
   senderId: string;
-  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE';
+  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL';
   content?: string | null;
   mediaUrl?: string | null;
   mediaMimeType?: string | null;
   durationMs?: number | null;
+  callId?: string | null;
   createdAt: string;
   status?: MessageStatus;
   readBy?: string[];

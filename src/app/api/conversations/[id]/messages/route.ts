@@ -46,6 +46,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       mediaUrl: m.mediaUrl,
       mediaMimeType: m.mediaMimeType,
       durationMs: m.durationMs,
+      callId: m.callId,
       createdAt: m.createdAt,
       readBy: m.reads.map((r) => r.userId),
     })),

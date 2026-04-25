@@ -1,8 +1,8 @@
-// File: /Users/maxevladenko/₮ubikz/src/app/(main)/layout.tsx
-import * as entry from '../../../../src/app/(main)/layout.js'
+// File: /Users/maxevladenko/₮ubikz/src/app/(main)/chat/layout.tsx
+import * as entry from '../../../../../src/app/(main)/chat/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
-type TEntry = typeof import('../../../../src/app/(main)/layout.js')
+type TEntry = typeof import('../../../../../src/app/(main)/chat/layout.js')
 
 // Check that the entry is a valid entry
 checkFields<Diff<{

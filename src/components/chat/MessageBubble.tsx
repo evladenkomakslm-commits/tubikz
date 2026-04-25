@@ -1,5 +1,5 @@
 'use client';
-import { Check, CheckCheck, Clock } from 'lucide-react';
+import { Check, CheckCheck, Clock, Phone, PhoneMissed } from 'lucide-react';
 import type { ChatMessage } from '@/types';
 import { cn, formatTime } from '@/lib/utils';
 import { VoiceBubble } from './VoiceBubble';
@@ -14,6 +14,23 @@ export function MessageBubble({
   grouped: boolean;
 }) {
   const status = inferStatus(message, isMe);
+
+  if (message.type === 'CALL') {
+    const isMissed = (message.content ?? '').includes('пропущен');
+    return (
+      <div className="flex justify-center my-2">
+        <div className="inline-flex items-center gap-2 bg-bg-panel border border-border rounded-full px-3.5 py-1.5 text-xs text-text-muted">
+          {isMissed ? (
+            <PhoneMissed className="w-3.5 h-3.5 text-danger" />
+          ) : (
+            <Phone className="w-3.5 h-3.5 text-success" />
+          )}
+          <span>{message.content}</span>
+          <span className="text-text-subtle">· {formatTime(message.createdAt)}</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
