@@ -24,6 +24,14 @@ void app.prepare().then(() => {
   const io = new IOServer(httpServer, {
     path: '/api/socket',
     cors: { origin: '*' },
+    // Render и многие прокси режут idle TCP через ~30s. Шлём пинг каждые 20s,
+    // так соединение никогда не считается idle.
+    pingInterval: 20_000,
+    pingTimeout: 25_000,
+    transports: ['websocket', 'polling'],
+    // Не мешать nginx-proxy-у с буферизацией ответов polling.
+    allowEIO3: false,
+    maxHttpBufferSize: 5e6,
   });
 
   setIO(io);
