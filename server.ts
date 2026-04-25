@@ -8,7 +8,9 @@ import { setIO } from './src/server/socket-bus';
 
 const dev = process.env.NODE_ENV !== 'production';
 const port = Number(process.env.PORT ?? 3000);
-const hostname = process.env.HOSTNAME ?? '0.0.0.0';
+// Always bind to 0.0.0.0 — Render/Heroku/etc set HOSTNAME to the pod name,
+// which makes the server unreachable from the edge proxy.
+const hostname = '0.0.0.0';
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
