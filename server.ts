@@ -93,12 +93,15 @@ void app.prepare().then(() => {
 
     // ===== Call signaling (1-on-1) =====
     // All events carry { peerId } indicating the *other* user. We forward to user:<peerId>.
-    const fwd = (event: string) => (payload: { peerId: string } & Record<string, unknown>) => {
+    const fwd = (event: string) => async (payload: { peerId: string } & Record<string, unknown>) => {
       if (!payload?.peerId || typeof payload.peerId !== 'string') return;
-      io.to(`user:${payload.peerId}`).emit(event, {
-        ...payload,
-        from: userId,
-      });
+      const room = `user:${payload.peerId}`;
+      const sockets = await io.in(room).fetchSockets();
+      console.log(
+        `[call] ${event} from=${userId} → peer=${payload.peerId}` +
+        ` (sockets in room: ${sockets.length})`,
+      );
+      io.to(room).emit(event, { ...payload, from: userId });
     };
 
     socket.on('call:invite', fwd('call:invite'));

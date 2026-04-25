@@ -179,6 +179,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         setLocalStream(stream);
         const offer = await ps.createOffer();
 
+        console.log('[call] sending invite', { peerId: peer.id, callId, type });
         signaling.invite(socket, {
           peerId: peer.id,
           callId,
@@ -276,6 +277,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     if (!socket || !me?.id) return;
 
     const onInvite = (payload: InviteFromServer) => {
+      console.log('[call] incoming invite', payload);
       if (useCallStore.getState().call) {
         // already in a call → auto-decline
         signaling.decline(socket, payload.from, payload.callId);
