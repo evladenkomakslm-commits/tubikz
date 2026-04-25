@@ -73,6 +73,7 @@ model Friendship {
 enum ConversationType {
   DIRECT
   GROUP
+  SAVED
 }
 
 model Conversation {

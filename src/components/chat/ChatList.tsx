@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Bookmark } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { useSocket } from '@/hooks/useSocket';
 import { useToast } from '@/components/ui/Toast';
@@ -10,7 +11,7 @@ import { cn, formatDay } from '@/lib/utils';
 
 interface ConvSummary {
   id: string;
-  type: 'DIRECT' | 'GROUP';
+  type: 'DIRECT' | 'GROUP' | 'SAVED';
   title: string | null;
   peer: {
     id: string;
@@ -121,7 +122,10 @@ export function ChatList() {
           <AnimatePresence initial={false}>
             {conversations.map((c) => {
               const active = params?.id === c.id;
-              const name = c.peer?.displayName ?? c.peer?.username ?? c.title ?? 'чат';
+              const isSaved = c.type === 'SAVED';
+              const name = isSaved
+                ? 'Избранное'
+                : (c.peer?.displayName ?? c.peer?.username ?? c.title ?? 'чат');
               return (
                 <motion.div
                   key={c.id}
@@ -140,12 +144,18 @@ export function ChatList() {
                         : 'hover:bg-bg-hover',
                     )}
                   >
-                    <Avatar
-                      src={c.peer?.avatarUrl}
-                      name={c.peer?.username ?? 'tubik'}
-                      size={44}
-                      online={c.peer?.isOnline}
-                    />
+                    {isSaved ? (
+                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-lg shadow-accent/30">
+                        <Bookmark className="w-5 h-5 text-white" fill="currentColor" />
+                      </div>
+                    ) : (
+                      <Avatar
+                        src={c.peer?.avatarUrl}
+                        name={c.peer?.username ?? 'tubik'}
+                        size={44}
+                        online={c.peer?.isOnline}
+                      />
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-2">
                         <div className="font-medium truncate text-sm">{name}</div>

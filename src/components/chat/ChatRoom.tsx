@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Bookmark, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar } from '@/components/ui/Avatar';
 import { useSocket } from '@/hooks/useSocket';
@@ -28,6 +28,7 @@ export function ChatRoom({
   currentUserId: string;
 }) {
   const [peer, setPeer] = useState<PeerInfo | null>(null);
+  const [convType, setConvType] = useState<'DIRECT' | 'GROUP' | 'SAVED'>('DIRECT');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -43,10 +44,13 @@ export function ChatRoom({
     const conv = await convRes.json();
     const msgs = await msgsRes.json();
     setPeer(conv.conversation?.peer ?? null);
+    setConvType(conv.conversation?.type ?? 'DIRECT');
     setMessages(msgs.messages ?? []);
     setLoading(false);
     fetch(`/api/conversations/${conversationId}/read`, { method: 'POST' }).catch(() => {});
   }, [conversationId]);
+
+  const isSaved = convType === 'SAVED';
 
   useEffect(() => {
     reload();
@@ -176,7 +180,17 @@ export function ChatRoom({
         <Link href="/chat" className="md:hidden text-text-muted hover:text-text">
           <ArrowLeft className="w-5 h-5" />
         </Link>
-        {peer && (
+        {isSaved ? (
+          <>
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-lg shadow-accent/30">
+              <Bookmark className="w-5 h-5 text-white" fill="currentColor" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium truncate">Избранное</div>
+              <div className="text-xs text-text-muted">личные заметки</div>
+            </div>
+          </>
+        ) : peer ? (
           <>
             <Avatar
               src={peer.avatarUrl}
@@ -208,13 +222,16 @@ export function ChatRoom({
               conversationId={conversationId}
             />
           </>
-        )}
+        ) : null}
       </header>
 
       <MessageList messages={messages} currentUserId={currentUserId} />
-      {peerTyping && <TypingIndicator />}
+      {!isSaved && peerTyping && <TypingIndicator />}
 
-      <Composer onSend={sendMessage} onTyping={emitTyping} />
+      <Composer
+        onSend={sendMessage}
+        onTyping={isSaved ? () => {} : emitTyping}
+      />
     </div>
   );
 }

@@ -1,8 +1,8 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { MessageSquare, Users, User as UserIcon, LogOut } from 'lucide-react';
+import { MessageSquare, Users, User as UserIcon, LogOut, Bookmark } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { cn } from '@/lib/utils';
 
@@ -18,6 +18,14 @@ export function Sidebar({
   user: { id: string; username: string; avatarUrl: string | null };
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function openSaved() {
+    const res = await fetch('/api/conversations/saved');
+    const data = await res.json();
+    if (data.id) router.push(`/chat/${data.id}`);
+  }
+
   return (
     <aside className="w-16 sm:w-20 shrink-0 bg-bg border-r border-border flex flex-col items-center py-4 gap-2">
       <Link href="/chat" className="mb-2">
@@ -46,6 +54,14 @@ export function Sidebar({
             </Link>
           );
         })}
+        <button
+          onClick={openSaved}
+          className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-text-muted text-[10px] sm:text-[11px] hover:bg-bg-hover hover:text-text transition-all"
+          title="избранное"
+        >
+          <Bookmark className="w-5 h-5" />
+          <span>сохр.</span>
+        </button>
       </nav>
       <button
         onClick={() => signOut({ callbackUrl: '/' })}
