@@ -9,7 +9,10 @@ services:
     region: frankfurt
     branch: main
     buildCommand: |
-      npm ci && npx prisma generate && npx prisma db push --accept-data-loss --skip-generate && npm run build
+      npm ci --no-audit --no-fund && \
+      npx prisma generate && \
+      npx prisma db push --accept-data-loss --skip-generate && \
+      NODE_OPTIONS='--max-old-space-size=460' npx next build
     startCommand: npx tsx server.ts
     healthCheckPath: /login
     autoDeploy: true
@@ -18,6 +21,10 @@ services:
         value: 20.18.0
       - key: NODE_ENV
         value: production
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=460"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
       - key: PORT
         value: 10000
       - key: DATABASE_URL
