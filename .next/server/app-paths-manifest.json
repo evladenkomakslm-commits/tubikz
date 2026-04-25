@@ -1,0 +1,22 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/auth/register/route": "app/api/auth/register/route.js",
+  "/api/conversations/[id]/messages/route": "app/api/conversations/[id]/messages/route.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/conversations/[id]/read/route": "app/api/conversations/[id]/read/route.js",
+  "/api/conversations/[id]/route": "app/api/conversations/[id]/route.js",
+  "/api/conversations/route": "app/api/conversations/route.js",
+  "/api/friends/request/route": "app/api/friends/request/route.js",
+  "/api/friends/route": "app/api/friends/route.js",
+  "/api/friends/respond/route": "app/api/friends/respond/route.js",
+  "/page": "app/page.js",
+  "/api/upload/route": "app/api/upload/route.js",
+  "/api/users/search/route": "app/api/users/search/route.js",
+  "/api/users/me/route": "app/api/users/me/route.js",
+  "/(main)/friends/page": "app/(main)/friends/page.js",
+  "/(main)/profile/page": "app/(main)/profile/page.js",
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/(auth)/register/page": "app/(auth)/register/page.js",
+  "/(main)/chat/[id]/page": "app/(main)/chat/[id]/page.js",
+  "/(main)/chat/page": "app/(main)/chat/page.js"
+}

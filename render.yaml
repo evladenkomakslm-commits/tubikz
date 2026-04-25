@@ -11,8 +11,7 @@ services:
     buildCommand: |
       npm ci --no-audit --no-fund && \
       npx prisma generate && \
-      npx prisma db push --accept-data-loss --skip-generate && \
-      NODE_OPTIONS='--max-old-space-size=460' npx next build
+      npx prisma db push --accept-data-loss --skip-generate
     startCommand: npx tsx server.ts
     healthCheckPath: /login
     autoDeploy: true
