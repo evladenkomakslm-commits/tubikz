@@ -123,8 +123,21 @@ export function ChatList() {
     conversationsRef.current = conversations;
   }, [conversations]);
 
+  // Mobile: full-width when on /chat (no chat selected). Hidden when in a chat
+  // (the ChatRoom takes the full screen with a back button).
+  // Desktop (md+): always visible as a 320px column.
+  const inChat = !!params?.id;
+
   return (
-    <aside className="w-72 sm:w-80 shrink-0 border-r border-border bg-bg-panel flex flex-col">
+    <aside
+      className={cn(
+        'shrink-0 border-r border-border bg-bg-panel flex-col',
+        // mobile width and visibility
+        inChat ? 'hidden md:flex' : 'flex w-full',
+        // desktop fixed width
+        'md:w-80 md:flex',
+      )}
+    >
       <header className="px-5 py-4 border-b border-border">
         <h2 className="text-lg font-semibold">чаты</h2>
         <p className="text-xs text-text-muted mt-0.5">{conversations.length} активных</p>

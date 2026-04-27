@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Loader2, Save } from 'lucide-react';
+import { Camera, Loader2, LogOut, Save } from 'lucide-react';
+import { signOut } from 'next-auth/react';
 import { Avatar } from '@/components/ui/Avatar';
 import { useToast } from '@/components/ui/Toast';
 
@@ -140,14 +141,23 @@ export function ProfilePanel() {
             />
             <div className="text-right text-xs text-text-subtle mt-1">{bio.length}/200</div>
           </div>
-          <button
-            onClick={save}
-            disabled={saving}
-            className="tk-btn-primary"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            сохранить
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="tk-btn-primary"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              сохранить
+            </button>
+            <button
+              onClick={() => signOut({ callbackUrl: '/' })}
+              className="tk-btn-ghost text-danger hover:text-danger"
+            >
+              <LogOut className="w-4 h-4" />
+              выйти
+            </button>
+          </div>
         </div>
       </div>
     </div>

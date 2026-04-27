@@ -1,8 +1,9 @@
 import { MessageSquare } from 'lucide-react';
 
 export default function ChatHomePage() {
+  // Hidden on mobile — the ChatList already fills the screen.
   return (
-    <div className="flex-1 flex items-center justify-center text-center p-6">
+    <div className="hidden md:flex flex-1 items-center justify-center text-center p-6">
       <div className="animate-fade-in">
         <div className="w-20 h-20 rounded-3xl bg-bg-panel border border-border flex items-center justify-center mx-auto mb-5">
           <MessageSquare className="w-9 h-9 text-text-muted" />

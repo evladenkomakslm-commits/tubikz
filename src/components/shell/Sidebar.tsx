@@ -27,13 +27,23 @@ export function Sidebar({
   }
 
   return (
-    <aside className="w-16 sm:w-20 shrink-0 bg-bg border-r border-border flex flex-col items-center py-4 gap-2">
-      <Link href="/chat" className="mb-2">
+    <aside
+      className={cn(
+        'shrink-0 bg-bg flex border-border',
+        // Mobile: horizontal bottom nav, full width, fixed height with safe-area
+        'w-full h-16 flex-row items-center justify-around px-2 border-t pb-[env(safe-area-inset-bottom)]',
+        // Desktop: vertical sidebar
+        'md:w-20 md:h-auto md:flex-col md:items-center md:justify-start md:py-4 md:gap-2 md:border-t-0 md:border-r md:px-0 md:pb-0',
+      )}
+    >
+      {/* Brand mark — visible on desktop only */}
+      <Link href="/chat" className="hidden md:block mb-2">
         <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center font-bold text-lg shadow-lg shadow-accent/30">
           ₮
         </div>
       </Link>
-      <nav className="flex-1 flex flex-col gap-1 mt-2 w-full px-2">
+
+      <nav className="flex flex-row md:flex-col md:flex-1 items-center justify-around md:justify-start gap-1 md:gap-1 w-full md:px-2 md:mt-2">
         {items.map((it) => {
           const active = pathname?.startsWith(it.href);
           const Icon = it.icon;
@@ -42,7 +52,8 @@ export function Sidebar({
               key={it.href}
               href={it.href}
               className={cn(
-                'flex flex-col items-center gap-1 py-2.5 rounded-xl text-text-muted text-[10px] sm:text-[11px] transition-all',
+                'flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl text-text-muted transition-all',
+                'text-[10px] md:text-[11px] min-w-[56px]',
                 active
                   ? 'bg-accent-soft text-accent'
                   : 'hover:bg-bg-hover hover:text-text',
@@ -56,21 +67,25 @@ export function Sidebar({
         })}
         <button
           onClick={openSaved}
-          className="flex flex-col items-center gap-1 py-2.5 rounded-xl text-text-muted text-[10px] sm:text-[11px] hover:bg-bg-hover hover:text-text transition-all"
+          className="flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl text-text-muted text-[10px] md:text-[11px] min-w-[56px] hover:bg-bg-hover hover:text-text transition-all"
           title="избранное"
         >
           <Bookmark className="w-5 h-5" />
           <span>сохр.</span>
         </button>
       </nav>
+
+      {/* Logout — desktop only; on mobile lives in profile (TODO) */}
       <button
         onClick={() => signOut({ callbackUrl: '/' })}
-        className="text-text-muted hover:text-danger p-2 rounded-xl transition-colors"
+        className="hidden md:block text-text-muted hover:text-danger p-2 rounded-xl transition-colors"
         title="выйти"
       >
         <LogOut className="w-5 h-5" />
       </button>
-      <Link href="/profile" className="mt-1">
+
+      {/* Avatar — desktop only */}
+      <Link href="/profile" className="hidden md:block mt-1">
         <Avatar
           src={user.avatarUrl}
           name={user.username}

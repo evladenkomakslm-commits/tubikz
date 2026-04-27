@@ -27,9 +27,15 @@ export function AppShell({
 
   return (
     <CallProvider>
-      <div className="h-screen w-screen flex overflow-hidden bg-bg">
+      {/*
+        Mobile (default): column with Sidebar at the bottom (bottom-tab nav).
+        Desktop (md+): row with Sidebar on the left.
+      */}
+      <div className="h-[100dvh] w-screen flex flex-col-reverse md:flex-row overflow-hidden bg-bg">
         <Sidebar user={user} />
-        <div className="flex-1 min-w-0 flex flex-col bg-bg-subtle">{children}</div>
+        <div className="flex-1 min-w-0 flex flex-col bg-bg-subtle overflow-hidden">
+          {children}
+        </div>
       </div>
       <DebugBar />
     </CallProvider>
