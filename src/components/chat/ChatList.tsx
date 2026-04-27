@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bookmark } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
@@ -33,6 +34,8 @@ interface ConvSummary {
 
 export function ChatList() {
   const params = useParams<{ id?: string }>();
+  const { data: session } = useSession();
+  const meId = session?.user?.id;
   const [conversations, setConversations] = useState<ConvSummary[]>([]);
   const socket = useSocket();
   const toast = useToast();
@@ -47,16 +50,26 @@ export function ChatList() {
     load();
   }, []);
 
+  // When user opens a chat, locally zero its unread badge — server-side
+  // the ChatRoom will POST /read on mount.
+  useEffect(() => {
+    if (!params?.id) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === params.id && c.unreadCount > 0 ? { ...c, unreadCount: 0 } : c)),
+    );
+  }, [params?.id]);
+
   useEffect(() => {
     if (!socket) return;
 
     const onMessage = (payload: { message: ConvSummary['lastMessage'] & { conversationId: string } }) => {
       if (!payload?.message) return;
       const m = payload.message;
+      const isOwn = meId && m.senderId === meId;
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === m.conversationId);
         if (idx === -1) {
-          // We may need to refetch if it's a new conversation
+          // New conversation — refetch list (could be a chat we just got added to).
           load();
           return prev;
         }
@@ -66,7 +79,8 @@ export function ChatList() {
           ...next[idx],
           lastMessage: m,
           updatedAt: m.createdAt,
-          unreadCount: isActive ? 0 : next[idx].unreadCount + 1,
+          unreadCount:
+            isActive || isOwn ? next[idx].unreadCount : next[idx].unreadCount + 1,
         };
         next.sort(
           (a, b) =>
@@ -76,6 +90,8 @@ export function ChatList() {
         return next;
       });
 
+      // Don't toast for our own messages or for the chat we're already viewing.
+      if (isOwn) return;
       const conv = conversationsRef.current.find((c) => c.id === m.conversationId);
       if (params?.id !== m.conversationId && conv?.peer && document.visibilityState !== 'visible') {
         toast.push({
@@ -100,7 +116,7 @@ export function ChatList() {
       socket.off('message:new', onMessage);
       socket.off('presence', onPresence);
     };
-  }, [socket, params?.id, toast]);
+  }, [socket, params?.id, toast, meId]);
 
   const conversationsRef = useRef(conversations);
   useEffect(() => {

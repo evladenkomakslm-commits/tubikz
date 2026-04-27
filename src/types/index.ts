@@ -26,7 +26,7 @@ export interface ChatMessage {
 
 export interface ConversationSummary {
   id: string;
-  type: 'DIRECT' | 'GROUP';
+  type: 'DIRECT' | 'GROUP' | 'SAVED';
   title?: string | null;
   peer?: ChatUser;
   lastMessage?: ChatMessage | null;

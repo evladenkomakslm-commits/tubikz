@@ -62,15 +62,18 @@ export function ChatRoom({
 
     const onMessage = (payload: { message: ChatMessage }) => {
       if (payload.message.conversationId !== conversationId) return;
+      // Sender flow: optimistic insert + API response is enough — the broadcast
+      // back to ourselves can race with the API resolution and create a duplicate
+      // because our optimistic id ('tmp-…') hasn't been swapped yet. Just ignore
+      // our own broadcasts.
+      if (payload.message.senderId === currentUserId) return;
       setMessages((prev) => {
         if (prev.some((m) => m.id === payload.message.id)) return prev;
         return [...prev, payload.message];
       });
-      if (payload.message.senderId !== currentUserId) {
-        fetch(`/api/conversations/${conversationId}/read`, { method: 'POST' }).catch(
-          () => {},
-        );
-      }
+      fetch(`/api/conversations/${conversationId}/read`, { method: 'POST' }).catch(
+        () => {},
+      );
     };
 
     const onRead = (payload: {

@@ -39,46 +39,54 @@ void app.prepare().then(() => {
   io.use(async (socket, next) => {
     try {
       const cookieHeader = socket.handshake.headers.cookie ?? '';
-      const cookieNames = cookieHeader
-        .split(';')
-        .map((c) => c.trim().split('=')[0])
-        .filter(Boolean);
+
+      // Parse cookie header into a plain object — NextAuth's getToken reads
+      // req.cookies (object), not req.headers.cookie (string). Without this,
+      // the SessionStore inside getToken silently sees zero cookies and
+      // always returns null.
+      const cookies: Record<string, string> = {};
+      for (const part of cookieHeader.split(';')) {
+        const trimmed = part.trim();
+        if (!trimmed) continue;
+        const eq = trimmed.indexOf('=');
+        if (eq === -1) continue;
+        const name = trimmed.slice(0, eq);
+        const value = trimmed.slice(eq + 1);
+        try {
+          cookies[name] = decodeURIComponent(value);
+        } catch {
+          cookies[name] = value;
+        }
+      }
+
       const isHttps = (process.env.NEXTAUTH_URL ?? '').startsWith('https://');
-      const expectedCookieName = isHttps
-        ? '__Secure-next-auth.session-token'
-        : 'next-auth.session-token';
+      const fakeReq = {
+        headers: { cookie: cookieHeader },
+        cookies,
+      } as unknown as Parameters<typeof getToken>[0]['req'];
 
-      const fakeReq = { headers: { cookie: cookieHeader } } as Parameters<typeof getToken>[0]['req'];
-
-      // Пробуем оба варианта имени cookie — иногда detection работает странно за proxy
       let token = await getToken({
         req: fakeReq,
         secret: process.env.NEXTAUTH_SECRET!,
+        secureCookie: isHttps,
       });
+      // Belt-and-suspenders: try the other scheme too in case of edge proxies.
       if (!token?.uid) {
         token = await getToken({
           req: fakeReq,
           secret: process.env.NEXTAUTH_SECRET!,
-          secureCookie: true,
-          cookieName: '__Secure-next-auth.session-token',
+          secureCookie: !isHttps,
+          cookieName: !isHttps
+            ? '__Secure-next-auth.session-token'
+            : 'next-auth.session-token',
         });
       }
+
       if (!token?.uid) {
-        token = await getToken({
-          req: fakeReq,
-          secret: process.env.NEXTAUTH_SECRET!,
-          secureCookie: false,
-          cookieName: 'next-auth.session-token',
-        });
+        const cookieNames = Object.keys(cookies).join(',');
+        console.warn(`[socket-auth] NO_TOKEN cookies=[${cookieNames}] nextauth_url=${process.env.NEXTAUTH_URL}`);
+        return next(new Error('unauthorized'));
       }
-
-      console.log(
-        `[socket-auth] cookies=[${cookieNames.join(',')}] expected=${expectedCookieName} ` +
-        `nextauth_url=${process.env.NEXTAUTH_URL} ` +
-        `result=${token?.uid ? 'ok uid=' + (token.uid as string).slice(0, 8) : 'NO_TOKEN'}`,
-      );
-
-      if (!token?.uid) return next(new Error('unauthorized'));
       (socket.data as { userId?: string }).userId = token.uid as string;
       next();
     } catch (err) {
