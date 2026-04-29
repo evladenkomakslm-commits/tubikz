@@ -37,7 +37,7 @@ export default function GetPage() {
                 </div>
                 <div>
                   <div className="font-medium">Android</div>
-                  <div className="text-xs text-text-muted">15 MB · debug</div>
+                  <div className="text-xs text-text-muted">20 MB · debug</div>
                 </div>
               </div>
               <div className="flex items-center gap-2 text-accent group-hover:gap-3 transition-all">

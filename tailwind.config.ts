@@ -3,6 +3,15 @@ import type { Config } from 'tailwindcss';
 const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
+    // Override breakpoints — phones (even wide ones in landscape, Z Fold open,
+    // tablets in portrait) should keep the single-pane mobile UI. Only true
+    // tablets-in-landscape and laptops/desktops get the side-by-side layout.
+    screens: {
+      sm: '640px',
+      md: '1024px', // raised from 768px so big phones don't trip into desktop UI
+      lg: '1280px',
+      xl: '1536px',
+    },
     extend: {
       colors: {
         bg: {
