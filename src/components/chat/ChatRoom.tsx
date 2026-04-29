@@ -178,19 +178,24 @@ export function ChatRoom({
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <header className="px-5 py-3 border-b border-border bg-bg-panel flex items-center gap-3">
-        <Link href="/chat" className="md:hidden text-text-muted hover:text-text">
+    <div className="flex flex-col h-full min-h-0 chat-wallpaper">
+      {/* Sticky header with safe-area for iOS notch */}
+      <header className="sticky top-0 z-10 bg-bg-panel/95 backdrop-blur border-b border-border flex items-center gap-3 px-3 md:px-5 py-2.5 pt-[max(env(safe-area-inset-top),0.625rem)]">
+        <Link
+          href="/chat"
+          className="md:hidden -ml-1 p-2 -my-2 rounded-full text-text hover:bg-bg-hover active:bg-bg-hover/80 transition-colors"
+          aria-label="назад"
+        >
           <ArrowLeft className="w-5 h-5" />
         </Link>
         {isSaved ? (
           <>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-lg shadow-accent/30">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-md shadow-accent/30">
               <Bookmark className="w-5 h-5 text-white" fill="currentColor" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">Избранное</div>
-              <div className="text-xs text-text-muted">личные заметки</div>
+              <div className="font-semibold truncate text-[15px]">Избранное</div>
+              <div className="text-[12px] text-text-muted">личные заметки</div>
             </div>
           </>
         ) : peer ? (
@@ -202,16 +207,16 @@ export function ChatRoom({
               online={peer.isOnline}
             />
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">
+              <div className="font-semibold truncate text-[15px]">
                 {peer.displayName ?? peer.username}
               </div>
-              <div className="text-xs text-text-muted">
+              <div className="text-[12px] text-text-muted truncate">
                 {peerTyping ? (
                   <span className="text-accent">печатает…</span>
                 ) : peer.isOnline ? (
-                  'онлайн'
+                  'в сети'
                 ) : (
-                  `был в сети ${formatTime(peer.lastSeenAt)}`
+                  `был в сети в ${formatTime(peer.lastSeenAt)}`
                 )}
               </div>
             </div>

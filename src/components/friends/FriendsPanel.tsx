@@ -104,11 +104,14 @@ export function FriendsPanel() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-8 animate-slide-up">
-      <h1 className="text-2xl font-semibold tracking-tight">друзья</h1>
-      <p className="text-text-muted mt-1 text-sm">найди тюбиков по username</p>
+    <div className="animate-slide-up">
+      <header className="sticky top-0 z-10 bg-bg-subtle/95 backdrop-blur border-b border-border/60 px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:px-6 md:py-4">
+        <h1 className="text-[22px] md:text-2xl font-semibold tracking-tight">друзья</h1>
+        <p className="text-text-muted text-xs md:text-sm mt-0.5">найди тюбиков по username</p>
+      </header>
 
-      <div className="mt-6 relative">
+      <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-6">
+      <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
         <input
           value={query}
@@ -235,6 +238,7 @@ export function FriendsPanel() {
           </div>
         )}
       </section>
+      </div>
     </div>
   );
 }

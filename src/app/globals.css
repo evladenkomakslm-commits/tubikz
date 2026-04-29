@@ -53,6 +53,16 @@ body {
     #0a0a0b;
 }
 
+/* Chat wallpaper — soft dot pattern + gradient accents (Telegram-ish) */
+.chat-wallpaper {
+  background-color: #0d0d10;
+  background-image:
+    radial-gradient(80% 60% at 0% 0%, rgba(124, 92, 255, 0.07), transparent 50%),
+    radial-gradient(80% 60% at 100% 100%, rgba(217, 70, 239, 0.06), transparent 55%),
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.025) 1px, transparent 0);
+  background-size: auto, auto, 22px 22px;
+}
+
 @keyframes float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }

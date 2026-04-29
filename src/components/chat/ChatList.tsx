@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bookmark } from 'lucide-react';
+import { Bookmark, MessageSquarePlus } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { useSocket } from '@/hooks/useSocket';
 import { useToast } from '@/components/ui/Toast';
@@ -126,26 +126,38 @@ export function ChatList() {
   // Mobile: full-width when on /chat (no chat selected). Hidden when in a chat
   // (the ChatRoom takes the full screen with a back button).
   // Desktop (md+): always visible as a 320px column.
+  const router = useRouter();
   const inChat = !!params?.id;
 
   return (
     <aside
       className={cn(
-        'shrink-0 border-r border-border bg-bg-panel flex-col',
+        'relative shrink-0 border-r border-border bg-bg-panel flex-col',
         // mobile width and visibility
         inChat ? 'hidden md:flex' : 'flex w-full',
         // desktop fixed width
         'md:w-80 md:flex',
       )}
     >
-      <header className="px-5 py-4 border-b border-border">
-        <h2 className="text-lg font-semibold">чаты</h2>
-        <p className="text-xs text-text-muted mt-0.5">{conversations.length} активных</p>
+      {/* Sticky header with safe-area for iOS notch */}
+      <header className="sticky top-0 z-10 bg-bg-panel/95 backdrop-blur border-b border-border px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)]">
+        <div className="flex items-baseline justify-between">
+          <h1 className="text-[22px] font-semibold tracking-tight">чаты</h1>
+          {conversations.length > 0 && (
+            <span className="text-xs text-text-muted">{conversations.length}</span>
+          )}
+        </div>
       </header>
-      <div className="flex-1 overflow-y-auto scroll-smooth-y">
+
+      <div className="flex-1 overflow-y-auto scroll-smooth-y overscroll-contain">
         {conversations.length === 0 ? (
-          <div className="px-5 py-10 text-center text-text-muted text-sm">
-            пока пусто. начни диалог из вкладки «друзья»
+          <div className="flex flex-col items-center justify-center h-full px-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
+              <MessageSquarePlus className="w-7 h-7 text-text-muted" />
+            </div>
+            <p className="text-sm text-text-muted">
+              пока никого. найди тюбика во вкладке «друзья»
+            </p>
           </div>
         ) : (
           <AnimatePresence initial={false}>
@@ -167,40 +179,43 @@ export function ChatList() {
                   <Link
                     href={`/chat/${c.id}`}
                     className={cn(
-                      'flex items-center gap-3 px-4 py-3 mx-2 my-1 rounded-xl transition-colors',
+                      'flex items-center gap-3 px-4 py-3 transition-colors active:bg-bg-hover/80',
                       active
-                        ? 'bg-accent-soft'
+                        ? 'bg-accent-soft md:bg-accent-soft'
                         : 'hover:bg-bg-hover',
                     )}
                   >
                     {isSaved ? (
-                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-lg shadow-accent/30">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-md shadow-accent/30">
                         <Bookmark className="w-5 h-5 text-white" fill="currentColor" />
                       </div>
                     ) : (
                       <Avatar
                         src={c.peer?.avatarUrl}
                         name={c.peer?.username ?? 'tubik'}
-                        size={44}
+                        size={48}
                         online={c.peer?.isOnline}
                       />
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-2">
-                        <div className="font-medium truncate text-sm">{name}</div>
+                        <div className="font-semibold truncate text-[15px] text-text">{name}</div>
                         {c.lastMessage && (
-                          <div className="text-[10px] text-text-subtle shrink-0">
+                          <div className={cn(
+                            'text-[11px] shrink-0',
+                            c.unreadCount > 0 && !active ? 'text-accent font-medium' : 'text-text-subtle',
+                          )}>
                             {formatDay(c.lastMessage.createdAt)}
                           </div>
                         )}
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <div className="text-xs text-text-muted truncate">
-                          {c.lastMessage ? preview(c.lastMessage) : 'нет сообщений'}
+                        <div className="text-[13px] text-text-muted truncate leading-snug">
+                          {c.lastMessage ? preview(c.lastMessage, meId) : 'нет сообщений'}
                         </div>
                         {c.unreadCount > 0 && !active && (
-                          <span className="bg-accent text-white text-[10px] font-medium rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                            {c.unreadCount}
+                          <span className="bg-accent text-white text-[11px] font-semibold rounded-full px-1.5 min-w-[20px] h-5 flex items-center justify-center shrink-0">
+                            {c.unreadCount > 99 ? '99+' : c.unreadCount}
                           </span>
                         )}
                       </div>
@@ -212,15 +227,29 @@ export function ChatList() {
           </AnimatePresence>
         )}
       </div>
+
+      {/* Floating action button — go to Friends to start a new chat. Mobile-only. */}
+      <button
+        onClick={() => router.push('/friends')}
+        aria-label="новый чат"
+        className="md:hidden absolute right-4 bottom-4 w-14 h-14 rounded-full bg-accent text-white shadow-2xl shadow-accent/40 flex items-center justify-center active:scale-95 transition-transform"
+      >
+        <MessageSquarePlus className="w-6 h-6" />
+      </button>
     </aside>
   );
 }
 
-function preview(m: { type: string; content: string | null }) {
-  if (m.type === 'TEXT') return m.content ?? '';
-  if (m.type === 'IMAGE') return '📷 фото';
-  if (m.type === 'VIDEO') return '🎬 видео';
-  if (m.type === 'VOICE') return '🎙 голосовое';
-  return '📎 файл';
+function preview(
+  m: { type: string; content: string | null; senderId?: string },
+  meId?: string,
+) {
+  const prefix = meId && m.senderId === meId ? 'вы: ' : '';
+  if (m.type === 'TEXT') return prefix + (m.content ?? '');
+  if (m.type === 'IMAGE') return prefix + '📷 фото';
+  if (m.type === 'VIDEO') return prefix + '🎬 видео';
+  if (m.type === 'VOICE') return prefix + '🎙 голосовое';
+  if (m.type === 'CALL') return '📞 звонок';
+  return prefix + '📎 файл';
 }
 

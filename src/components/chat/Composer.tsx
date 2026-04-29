@@ -1,10 +1,19 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, Mic, Send, X, Loader2, Square } from 'lucide-react';
+import {
+  Image as ImageIcon,
+  Mic,
+  Send,
+  X,
+  Loader2,
+  Paperclip,
+  Video as VideoIcon,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/Toast';
 import { useDebugStore } from '@/lib/debug-store';
 import { useSession } from 'next-auth/react';
+import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/types';
 
 type SendInput = {
@@ -34,6 +43,20 @@ export function Composer({
   const fileImageRef = useRef<HTMLInputElement>(null);
   const fileVideoRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const attachRef = useRef<HTMLDivElement>(null);
+
+  // Close attach popover on outside click.
+  useEffect(() => {
+    if (!attachOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (attachRef.current && !attachRef.current.contains(e.target as Node)) {
+        setAttachOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [attachOpen]);
   const toast = useToast();
   const debugToggle = useDebugStore((s) => s.toggle);
   const { data: session } = useSession();
@@ -184,8 +207,10 @@ export function Composer({
     }
   }
 
+  const hasText = text.trim().length > 0;
+
   return (
-    <div className="border-t border-border bg-bg-panel px-3 sm:px-4 py-3">
+    <div className="border-t border-border/60 bg-bg-panel/95 backdrop-blur px-2 sm:px-3 py-2 pb-[max(env(safe-area-inset-bottom),0.5rem)]">
       <input
         ref={fileImageRef}
         type="file"
@@ -216,25 +241,27 @@ export function Composer({
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
-            className="flex items-center gap-3"
+            className="flex items-center gap-2"
           >
             <button
               onClick={() => stopRecording(true)}
-              className="p-2 rounded-full text-text-muted hover:text-danger transition-colors"
+              className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full text-text-muted hover:text-danger active:bg-bg-hover transition-colors"
               title="отмена"
+              aria-label="отменить запись"
             >
               <X className="w-5 h-5" />
             </button>
-            <div className="flex-1 flex items-center gap-3 bg-bg-elevated rounded-2xl px-4 py-2.5">
+            <div className="flex-1 flex items-center gap-3 bg-bg-elevated rounded-full px-4 h-10">
               <span className="w-2.5 h-2.5 rounded-full bg-danger animate-pulse-soft" />
-              <span className="text-sm text-text">
-                запись · {Math.floor(recordingMs / 1000)}s
+              <span className="text-sm text-text tabular-nums">
+                {Math.floor(recordingMs / 1000)}s
               </span>
             </div>
             <button
               onClick={() => stopRecording(false)}
-              className="p-2.5 rounded-full bg-accent text-white hover:bg-accent-hover transition-colors"
+              className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-accent text-white shadow-md shadow-accent/30 active:scale-95 transition-transform"
               title="отправить"
+              aria-label="отправить голосовое"
             >
               <Send className="w-5 h-5" />
             </button>
@@ -244,59 +271,110 @@ export function Composer({
             key="compose"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-end gap-2"
+            className="flex items-end gap-1.5"
           >
-            <button
-              onClick={() => fileImageRef.current?.click()}
-              disabled={uploading}
-              className="p-2.5 rounded-full text-text-muted hover:text-accent hover:bg-bg-hover transition-colors"
-              title="фото"
-            >
-              {uploading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+            {/* Attach button + popover */}
+            <div ref={attachRef} className="relative shrink-0">
+              <button
+                onClick={() => setAttachOpen((v) => !v)}
+                disabled={uploading}
+                className={cn(
+                  'w-10 h-10 flex items-center justify-center rounded-full transition-all',
+                  attachOpen
+                    ? 'bg-accent-soft text-accent rotate-45'
+                    : 'text-text-muted hover:bg-bg-hover active:bg-bg-hover/80',
+                )}
+                title="прикрепить"
+                aria-label="прикрепить файл"
+              >
+                {uploading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Paperclip className="w-5 h-5" />
+                )}
+              </button>
+              <AnimatePresence>
+                {attachOpen && !uploading && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute bottom-full left-0 mb-2 bg-bg-panel border border-border rounded-2xl shadow-2xl p-1.5 flex flex-col gap-0.5 min-w-[160px]"
+                  >
+                    <button
+                      onClick={() => {
+                        setAttachOpen(false);
+                        fileImageRef.current?.click();
+                      }}
+                      className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+                    >
+                      <ImageIcon className="w-4 h-4 text-accent" />
+                      фото
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAttachOpen(false);
+                        fileVideoRef.current?.click();
+                      }}
+                      className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+                    >
+                      <VideoIcon className="w-4 h-4 text-success" />
+                      видео
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="flex-1 flex items-end bg-bg-elevated rounded-3xl border border-border/60 focus-within:border-accent/60 transition-colors">
+              <textarea
+                ref={taRef}
+                value={text}
+                onChange={(e) => handleTyping(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    submit();
+                  }
+                }}
+                rows={1}
+                placeholder="напиши сообщение"
+                className="flex-1 resize-none bg-transparent px-4 py-2.5 text-[15px] outline-none placeholder:text-text-subtle max-h-40"
+              />
+            </div>
+
+            <AnimatePresence mode="wait" initial={false}>
+              {hasText ? (
+                <motion.button
+                  key="send"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={submit}
+                  className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-accent text-white shadow-md shadow-accent/30 active:scale-95 transition-transform"
+                  title="отправить"
+                  aria-label="отправить"
+                >
+                  <Send className="w-5 h-5 -ml-0.5" />
+                </motion.button>
               ) : (
-                <ImageIcon className="w-5 h-5" />
+                <motion.button
+                  key="mic"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={startRecording}
+                  className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full text-text-muted hover:text-accent hover:bg-bg-hover active:bg-bg-hover/80 transition-colors"
+                  title="голосовое"
+                  aria-label="записать голосовое"
+                >
+                  <Mic className="w-5 h-5" />
+                </motion.button>
               )}
-            </button>
-            <button
-              onClick={() => fileVideoRef.current?.click()}
-              disabled={uploading}
-              className="p-2.5 rounded-full text-text-muted hover:text-accent hover:bg-bg-hover transition-colors"
-              title="видео"
-            >
-              <Square className="w-5 h-5" />
-            </button>
-            <textarea
-              ref={taRef}
-              value={text}
-              onChange={(e) => handleTyping(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  submit();
-                }
-              }}
-              rows={1}
-              placeholder="напиши сообщение"
-              className="flex-1 resize-none bg-bg-elevated border border-border rounded-2xl px-4 py-2.5 text-[14px] outline-none focus:border-accent focus:ring-2 focus:ring-accent/30 max-h-40"
-            />
-            {text.trim() ? (
-              <button
-                onClick={submit}
-                className="p-2.5 rounded-full bg-accent text-white hover:bg-accent-hover transition-colors"
-                title="отправить"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            ) : (
-              <button
-                onClick={startRecording}
-                className="p-2.5 rounded-full text-text-muted hover:text-accent hover:bg-bg-hover transition-colors"
-                title="голосовое"
-              >
-                <Mic className="w-5 h-5" />
-              </button>
-            )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>

@@ -32,25 +32,33 @@ export function MessageBubble({
     );
   }
 
+  const isText = message.type === 'TEXT';
+
   return (
     <div
       className={cn(
-        'flex',
+        'flex px-1',
         isMe ? 'justify-end' : 'justify-start',
-        grouped ? 'mt-0.5' : 'mt-2',
+        grouped ? 'mt-0.5' : 'mt-1.5',
       )}
     >
       <div
         className={cn(
-          'max-w-[80%] sm:max-w-[60%] rounded-2xl px-3.5 py-2 text-[14px] leading-snug shadow-sm',
+          'relative max-w-[78%] sm:max-w-[65%] rounded-2xl text-[15px] leading-[1.35] shadow-sm',
           isMe
-            ? 'bg-accent text-white rounded-br-md'
-            : 'bg-bg-panel border border-border rounded-bl-md',
-          message.type !== 'TEXT' && 'p-1.5',
+            ? 'bg-accent text-white'
+            : 'bg-bg-panel/95 border border-border/60 backdrop-blur-sm',
+          // Telegram-like tails: only on the last bubble in a group
+          !grouped && (isMe ? 'rounded-br-md' : 'rounded-bl-md'),
+          isText ? 'pl-3 pr-3 py-1.5' : 'p-1',
         )}
       >
-        {message.type === 'TEXT' && (
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        {isText && (
+          <p className="whitespace-pre-wrap break-words pb-3">
+            {message.content}
+            {/* Spacer for the absolutely-positioned time so it doesn't overlap the last word. */}
+            <span className="inline-block w-12 align-bottom" aria-hidden />
+          </p>
         )}
 
         {message.type === 'IMAGE' && message.mediaUrl && (
@@ -58,7 +66,7 @@ export function MessageBubble({
           <img
             src={message.mediaUrl}
             alt="фото"
-            className="rounded-xl max-h-80 object-cover"
+            className="rounded-xl max-h-80 object-cover w-full"
           />
         )}
 
@@ -66,7 +74,7 @@ export function MessageBubble({
           <video
             src={message.mediaUrl}
             controls
-            className="rounded-xl max-h-80"
+            className="rounded-xl max-h-80 w-full"
           />
         )}
 
@@ -78,16 +86,17 @@ export function MessageBubble({
           />
         )}
 
+        {/* Time + status — tucked in the bottom-right corner like Telegram */}
         <div
           className={cn(
-            'flex items-center justify-end gap-1 mt-1 text-[10px]',
-            isMe ? 'text-white/70' : 'text-text-subtle',
-            message.type !== 'TEXT' && 'px-2 pb-1',
+            'absolute right-2 bottom-1 flex items-center gap-0.5 text-[10px] leading-none select-none',
+            isMe ? 'text-white/75' : 'text-text-subtle',
+            !isText && 'right-2.5 bottom-1.5 px-1.5 py-0.5 rounded-full bg-black/40 backdrop-blur-sm text-white/90',
           )}
         >
           <span>{formatTime(message.createdAt)}</span>
           {isMe && (
-            <span className="flex items-center">
+            <span className="flex items-center -mr-0.5">
               {status === 'sending' && <Clock className="w-3 h-3" />}
               {status === 'sent' && <Check className="w-3 h-3" />}
               {status === 'delivered' && <CheckCheck className="w-3 h-3" />}

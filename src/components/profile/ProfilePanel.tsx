@@ -77,11 +77,15 @@ export function ProfilePanel() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-6 py-10 animate-slide-up">
-      <h1 className="text-2xl font-semibold tracking-tight">профиль</h1>
-      <p className="text-text-muted mt-1 text-sm">так тебя видят другие тюбики</p>
+    <div className="animate-slide-up">
+      {/* Sticky mobile header */}
+      <header className="sticky top-0 z-10 bg-bg-subtle/95 backdrop-blur border-b border-border/60 px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)] md:px-6 md:py-4">
+        <h1 className="text-[22px] md:text-2xl font-semibold tracking-tight">профиль</h1>
+        <p className="text-text-muted text-xs md:text-sm mt-0.5">так тебя видят другие тюбики</p>
+      </header>
 
-      <div className="mt-8 rounded-2xl bg-bg-panel border border-border p-6">
+      <div className="max-w-2xl mx-auto px-4 md:px-6 py-4 md:py-8">
+      <div className="rounded-2xl bg-bg-panel border border-border p-5 md:p-6">
         <div className="flex items-center gap-5">
           <div className="relative">
             <Avatar src={avatarUrl} name={me.username} size={88} online={me.isOnline} />
@@ -159,6 +163,7 @@ export function ProfilePanel() {
             </button>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -20,6 +20,10 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
 
+  // On mobile, hide the bottom-nav when inside a chat — like Telegram/WhatsApp.
+  // Path /chat/<id> matches; path /chat (list) does not.
+  const inChat = /^\/chat\/[^/]+/.test(pathname ?? '');
+
   async function openSaved() {
     const res = await fetch('/api/conversations/saved');
     const data = await res.json();
@@ -32,6 +36,8 @@ export function Sidebar({
         'shrink-0 bg-bg flex border-border',
         // Mobile: horizontal bottom nav, full width, fixed height with safe-area
         'w-full h-16 flex-row items-center justify-around px-2 border-t pb-[env(safe-area-inset-bottom)]',
+        // Hide bottom nav on mobile when inside a chat for full-screen messenger UX
+        inChat && 'hidden md:flex',
         // Desktop: vertical sidebar
         'md:w-20 md:h-auto md:flex-col md:items-center md:justify-start md:py-4 md:gap-2 md:border-t-0 md:border-r md:px-0 md:pb-0',
       )}
