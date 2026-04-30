@@ -1,28 +1,42 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { registerSchema } from '@/lib/validators';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Ticket } from 'lucide-react';
 
 export function RegisterForm() {
   const router = useRouter();
+  const search = useSearchParams();
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // Auto-fill invite code from ?invite=XXX query param (for shareable links).
+  useEffect(() => {
+    const fromUrl = search.get('invite');
+    if (fromUrl && !inviteCode) setInviteCode(fromUrl.toUpperCase());
+  }, [search, inviteCode]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrors({});
-    const parsed = registerSchema.safeParse({ email, username, password });
+    const parsed = registerSchema.safeParse({
+      email,
+      username,
+      password,
+      inviteCode,
+    });
     if (!parsed.success) {
       const flat = parsed.error.flatten().fieldErrors;
       setErrors({
         email: flat.email?.[0] ?? '',
         username: flat.username?.[0] ?? '',
         password: flat.password?.[0] ?? '',
+        inviteCode: flat.inviteCode?.[0] ?? '',
       });
       return;
     }
@@ -35,7 +49,9 @@ export function RegisterForm() {
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       setSubmitting(false);
-      if (data.error === 'taken') {
+      if (data.error === 'invalid_invite') {
+        setErrors({ inviteCode: data.message ?? 'неверный код приглашения' });
+      } else if (data.error === 'taken') {
         setErrors({ [data.field]: `${data.field} уже занят` });
       } else if (data.issues) {
         const flat = data.issues as Record<string, string[]>;
@@ -43,6 +59,7 @@ export function RegisterForm() {
           email: flat.email?.[0] ?? '',
           username: flat.username?.[0] ?? '',
           password: flat.password?.[0] ?? '',
+          inviteCode: flat.inviteCode?.[0] ?? '',
         });
       } else {
         setErrors({ form: 'не удалось зарегистрироваться' });
@@ -60,6 +77,20 @@ export function RegisterForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      <Field label="код приглашения" error={errors.inviteCode}>
+        <div className="relative">
+          <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
+          <input
+            type="text"
+            autoComplete="off"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+            className="tk-input pl-10 font-mono tracking-wider uppercase"
+            placeholder="ABCD-1234"
+            maxLength={9}
+          />
+        </div>
+      </Field>
       <Field label="email" error={errors.email}>
         <input
           type="email"

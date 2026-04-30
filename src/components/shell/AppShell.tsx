@@ -9,7 +9,7 @@ export function AppShell({
   user,
   children,
 }: {
-  user: { id: string; username: string; avatarUrl: string | null };
+  user: { id: string; username: string; avatarUrl: string | null; isAdmin?: boolean };
   children: React.ReactNode;
 }) {
   const socket = useSocket();
@@ -24,6 +24,15 @@ export function AppShell({
       socket.off('connect', onConnect);
     };
   }, [socket]);
+
+  // Record the device on the active sessions page (UA + IP).
+  useEffect(() => {
+    fetch('/api/auth/sessions/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userAgent: navigator.userAgent }),
+    }).catch(() => {});
+  }, []);
 
   return (
     <CallProvider>

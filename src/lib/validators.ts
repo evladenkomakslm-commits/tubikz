@@ -15,15 +15,23 @@ export const passwordSchema = z
   .regex(/[A-Za-z]/, 'нужна хотя бы одна буква')
   .regex(/[0-9]/, 'нужна хотя бы одна цифра');
 
+export const inviteCodeSchema = z
+  .string()
+  .min(8, 'код состоит из 8 символов')
+  .max(12)
+  .transform((s) => s.trim().toUpperCase());
+
 export const registerSchema = z.object({
   email: emailSchema,
   username: usernameSchema,
   password: passwordSchema,
+  inviteCode: inviteCodeSchema,
 });
 
 export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, 'введи пароль'),
+  totpCode: z.string().regex(/^\d{6}$/).optional(),
 });
 
 export const messageSchema = z.object({

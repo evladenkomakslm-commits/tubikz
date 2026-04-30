@@ -19,6 +19,7 @@ model User {
   avatarUrl     String?
   bio           String?
   isOnline      Boolean  @default(false)
+  isAdmin       Boolean  @default(false)
   lastSeenAt    DateTime @default(now())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -32,9 +33,59 @@ model User {
   readReceipts     MessageRead[]
   outgoingCalls    Call[]         @relation("CallCaller")
   incomingCalls    Call[]         @relation("CallCallee")
+  invitesCreated   InviteCode[]   @relation("InviteCreator")
+  inviteUsed       InviteCode?    @relation("InviteUsedBy")
+  totp             TotpSecret?
+  sessions         ActiveSession[]
 
   @@index([username])
   @@index([email])
+}
+
+/// Pre-generated codes that gate registration. Admin generates → shares with friend → friend uses on /register.
+model InviteCode {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  note        String?   // optional human label, e.g. "for Sasha"
+  createdById String?
+  usedById    String?   @unique
+  usedAt      DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  createdBy User? @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  usedBy    User? @relation("InviteUsedBy", fields: [usedById], references: [id], onDelete: SetNull)
+
+  @@index([code])
+}
+
+/// TOTP (Google Authenticator) secret for 2FA. One per user.
+model TotpSecret {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  secret    String   // base32-encoded
+  enabled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  enabledAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// One row per active login session (per device/browser). JWT carries jti; on every
+/// authenticated request we check the row exists. "Logout other devices" deletes rows.
+model ActiveSession {
+  id           String   @id @default(cuid())
+  userId       String
+  jti          String   @unique // JWT ID
+  userAgent    String?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+  expiresAt    DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 enum RequestStatus {

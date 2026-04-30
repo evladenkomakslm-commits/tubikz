@@ -2,7 +2,14 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { MessageSquare, Users, User as UserIcon, LogOut, Bookmark } from 'lucide-react';
+import {
+  MessageSquare,
+  Users,
+  User as UserIcon,
+  LogOut,
+  Bookmark,
+  Ticket,
+} from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { cn } from '@/lib/utils';
 
@@ -15,7 +22,7 @@ const items = [
 export function Sidebar({
   user,
 }: {
-  user: { id: string; username: string; avatarUrl: string | null };
+  user: { id: string; username: string; avatarUrl: string | null; isAdmin?: boolean };
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -79,6 +86,22 @@ export function Sidebar({
           <Bookmark className="w-5 h-5" />
           <span>сохр.</span>
         </button>
+        {user.isAdmin && (
+          <Link
+            href="/admin/invites"
+            className={cn(
+              'flex flex-col items-center gap-0.5 py-2 px-3 rounded-xl transition-all',
+              'text-[10px] md:text-[11px] min-w-[56px]',
+              pathname?.startsWith('/admin')
+                ? 'bg-accent-soft text-accent'
+                : 'text-text-muted hover:bg-bg-hover hover:text-text',
+            )}
+            title="приглашения"
+          >
+            <Ticket className="w-5 h-5" />
+            <span>пригл.</span>
+          </Link>
+        )}
       </nav>
 
       {/* Logout — desktop only; on mobile lives in profile (TODO) */}

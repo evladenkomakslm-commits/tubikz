@@ -11,3 +11,4 @@ public/uploads/*
 build/Tubikz.app
 build/Tubikz.iconset
 build/Tubikz.icns
+.claude/
