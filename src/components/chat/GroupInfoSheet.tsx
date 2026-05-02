@@ -245,7 +245,7 @@ export function GroupInfoSheet({
 
             {view === 'list' ? (
               <>
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto">
                   {description && (
                     <div className="px-4 py-3 border-b border-border/60">
                       <div className="text-[11px] uppercase tracking-wider text-text-subtle mb-1">
@@ -591,7 +591,7 @@ function AddMemberView({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-text-muted">
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -716,7 +716,7 @@ function EditGroupView({
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-y-auto">
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
       <input
         ref={fileRef}
         type="file"

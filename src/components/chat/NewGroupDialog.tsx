@@ -183,7 +183,7 @@ export function NewGroupDialog({
                 </div>
 
                 {/* List */}
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto">
                   {loading ? (
                     <div className="flex items-center justify-center py-8 text-text-muted">
                       <Loader2 className="w-5 h-5 animate-spin" />
@@ -259,7 +259,7 @@ export function NewGroupDialog({
                   />
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-3">
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
                   <div className="text-xs uppercase tracking-wider text-text-muted mb-2">
                     участники ({picked.size})
                   </div>
