@@ -9,7 +9,7 @@ import {
   Reply,
   Pencil,
   Trash2,
-  Smile,
+  Copy,
   Image as ImageIconSm,
   Video as VideoIconSm,
   Mic as MicIconSm,
@@ -17,6 +17,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import type { ChatMessage } from '@/types';
 import { cn, formatTime } from '@/lib/utils';
+import { useToast } from '@/components/ui/Toast';
 import { VoiceBubble } from './VoiceBubble';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'] as const;
@@ -43,7 +44,32 @@ export function MessageBubble({
   const status = inferStatus(message, isMe);
   const [menuOpen, setMenuOpen] = useState(false);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const longPressFiredRef = useRef(false);
   const isDeleted = !!message.deletedAt;
+  const toast = useToast();
+
+  async function copyContent() {
+    const text = message.content ?? '';
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for older iOS Safari.
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      toast.push({ message: 'скопировано' });
+    } catch {
+      toast.push({ message: 'не удалось скопировать', kind: 'error' });
+    }
+  }
 
   // Outside click closes the action menu.
   useEffect(() => {
@@ -90,8 +116,16 @@ export function MessageBubble({
 
   function startLongPress(e: React.TouchEvent | React.MouseEvent) {
     e.stopPropagation();
+    longPressFiredRef.current = false;
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressTimer.current = setTimeout(() => setMenuOpen(true), 450);
+    longPressTimer.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      // Drop any text-selection that iOS might have started despite
+      // user-select:none, so it doesn't sit highlighted under our menu.
+      const sel = window.getSelection?.();
+      sel?.removeAllRanges?.();
+      setMenuOpen(true);
+    }, 450);
   }
   function cancelLongPress() {
     if (longPressTimer.current) {
@@ -112,14 +146,23 @@ export function MessageBubble({
       <div className={cn('relative max-w-[78%] sm:max-w-[65%]', isMe ? 'items-end' : 'items-start')}>
         <div
           onContextMenu={(e) => {
+            // Block the native long-press menu (iOS "Copy / Look Up").
             e.preventDefault();
             setMenuOpen(true);
           }}
           onTouchStart={startLongPress}
           onTouchEnd={cancelLongPress}
           onTouchMove={cancelLongPress}
+          onTouchCancel={cancelLongPress}
+          // Prevent text-selection drag from hijacking the long-press.
+          // We expose an explicit "копировать" action in the menu instead.
+          style={{
+            WebkitTouchCallout: 'none',
+            WebkitUserSelect: 'none',
+            userSelect: 'none',
+          }}
           className={cn(
-            'relative rounded-2xl text-[15px] leading-[1.35] shadow-sm select-text',
+            'relative rounded-2xl text-[15px] leading-[1.35] shadow-sm',
             isMe
               ? 'bg-accent text-white'
               : 'bg-bg-panel/95 border border-border/60 backdrop-blur-sm',
@@ -288,14 +331,16 @@ export function MessageBubble({
                   setMenuOpen(false);
                 }}
               />
-              <MenuItem
-                icon={<Smile className="w-4 h-4" />}
-                label="реакция"
-                onClick={() => {
-                  // Tap a quick emoji from the strip; explicit picker can come later.
-                  setMenuOpen(false);
-                }}
-              />
+              {message.type === 'TEXT' && message.content && (
+                <MenuItem
+                  icon={<Copy className="w-4 h-4" />}
+                  label="копировать"
+                  onClick={() => {
+                    copyContent();
+                    setMenuOpen(false);
+                  }}
+                />
+              )}
               {isMe && message.type === 'TEXT' && (
                 <MenuItem
                   icon={<Pencil className="w-4 h-4" />}
