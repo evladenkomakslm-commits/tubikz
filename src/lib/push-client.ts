@@ -32,6 +32,29 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 }
 
+/**
+ * Wait for an active service worker, registering /sw.js first if no
+ * registration exists yet. Without this, calling
+ * `navigator.serviceWorker.ready` on a fresh load hangs indefinitely
+ * because there's nothing to become "ready". Bounded with a 10s timeout
+ * so the UI never sits on a forever-spinner.
+ */
+async function ensureActiveRegistration(): Promise<ServiceWorkerRegistration | null> {
+  if (!('serviceWorker' in navigator)) return null;
+  let reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) {
+    reg = await navigator.serviceWorker.register('/sw.js').catch(() => null as never);
+    if (!reg) return null;
+  }
+  // If already active, return immediately.
+  if (reg.active) return reg;
+  // Otherwise wait for activation, up to 10s.
+  return await Promise.race<ServiceWorkerRegistration | null>([
+    navigator.serviceWorker.ready,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000)),
+  ]);
+}
+
 export async function subscribeToPush(): Promise<boolean> {
   if (!pushSupported()) return false;
   if (Notification.permission === 'denied') return false;
@@ -41,7 +64,7 @@ export async function subscribeToPush(): Promise<boolean> {
     const res = await Notification.requestPermission();
     if (res !== 'granted') return false;
   }
-  const reg = (await navigator.serviceWorker.ready) ?? (await registerServiceWorker());
+  const reg = await ensureActiveRegistration();
   if (!reg) return false;
 
   const keyRes = await fetch('/api/push/vapid-public-key');
@@ -89,7 +112,8 @@ export async function subscribeToPush(): Promise<boolean> {
 
 export async function unsubscribeFromPush(): Promise<boolean> {
   if (!pushSupported()) return false;
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await navigator.serviceWorker.getRegistration();
+  if (!reg) return true;
   const sub = await reg.pushManager.getSubscription();
   if (!sub) return true;
   await fetch('/api/push/subscribe', {
