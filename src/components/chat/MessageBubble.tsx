@@ -12,6 +12,8 @@ import {
   Copy,
   Pin,
   PinOff,
+  Download,
+  File as FileIcon,
   Image as ImageIconSm,
   Video as VideoIconSm,
   Mic as MicIconSm,
@@ -322,6 +324,61 @@ export function MessageBubble({
             />
           )}
 
+          {message.type === 'FILE' && message.mediaUrl && (() => {
+            // We stash "filename|sizeBytes" in `content` at upload time so
+            // the bubble can render a proper file card without needing
+            // extra schema columns.
+            const [name, sizeStr] = (message.content ?? '').split('|');
+            const size = Number(sizeStr) || 0;
+            return (
+              <a
+                href={message.mediaUrl}
+                download={name || 'file'}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  'flex items-center gap-3 rounded-xl px-3 py-2 min-w-[200px] max-w-[300px] transition-colors',
+                  isMe
+                    ? 'bg-white/10 hover:bg-white/20'
+                    : 'bg-bg-elevated hover:bg-bg-hover',
+                )}
+              >
+                <div
+                  className={cn(
+                    'shrink-0 w-10 h-10 rounded-full flex items-center justify-center',
+                    isMe ? 'bg-white/20 text-white' : 'bg-accent/15 text-accent',
+                  )}
+                >
+                  <FileIcon className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div
+                    className={cn(
+                      'text-[13.5px] font-medium truncate',
+                      isMe ? 'text-white' : 'text-text',
+                    )}
+                  >
+                    {name || 'файл'}
+                  </div>
+                  <div
+                    className={cn(
+                      'text-[11px]',
+                      isMe ? 'text-white/70' : 'text-text-muted',
+                    )}
+                  >
+                    {formatBytes(size)}
+                  </div>
+                </div>
+                <Download
+                  className={cn(
+                    'w-4 h-4 shrink-0',
+                    isMe ? 'text-white/70' : 'text-text-muted',
+                  )}
+                />
+              </a>
+            );
+          })()}
+
           {/* Time + edited marker + status, bottom-right corner. */}
           <div
             className={cn(
@@ -551,6 +608,13 @@ function replyPreviewText(reply: NonNullable<ChatMessage['replyTo']>) {
       </>
     );
   return <span className="truncate">{reply.content || '...'}</span>;
+}
+
+function formatBytes(n: number): string {
+  if (!n) return '—';
+  if (n < 1024) return `${n} Б`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} КБ`;
+  return `${(n / 1024 / 1024).toFixed(1)} МБ`;
 }
 
 function inferStatus(m: ChatMessage, isMe: boolean): ChatMessage['status'] {

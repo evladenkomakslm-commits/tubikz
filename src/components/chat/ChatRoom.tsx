@@ -10,6 +10,7 @@ import {
   Loader2,
   MoreVertical,
   Pin,
+  Upload,
   X,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -22,6 +23,7 @@ import { Composer, type ReplyTarget, type EditTarget } from './Composer';
 import { TypingIndicator } from './TypingIndicator';
 import { GroupInfoSheet } from './GroupInfoSheet';
 import { CallButton } from '@/components/calls/CallButton';
+import { compressImage } from '@/lib/image-compress';
 import type { ChatMessage, ReactionSummary } from '@/types';
 import { formatTime } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
@@ -48,6 +50,10 @@ function previewOf(m: ChatMessage): string {
   if (m.type === 'VIDEO') return 'видео';
   if (m.type === 'VOICE') return 'голосовое';
   if (m.type === 'CALL') return 'звонок';
+  if (m.type === 'FILE') {
+    // FILE bubble stashes "filename|size" in content; show only the name.
+    return (m.content ?? '').split('|')[0] || 'файл';
+  }
   return m.content?.trim() || '...';
 }
 
@@ -88,6 +94,8 @@ export function ChatRoom({
   const [archivedAt, setArchivedAt] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const dropDepthRef = useRef(0);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const socket = useSocket();
@@ -189,6 +197,41 @@ export function ChatRoom({
             ? 'отключено навсегда'
             : `отключено на ${duration}ч`,
     });
+  }
+
+  /**
+   * Drag-and-drop upload. Detects type by MIME prefix and routes through
+   * the same /api/upload pipeline the composer uses, including image
+   * compression. Multiple files are sent sequentially.
+   */
+  async function handleDroppedFiles(files: File[]) {
+    if (files.length === 0) return;
+    for (const f of files) {
+      const isImage = f.type.startsWith('image/');
+      const isVideo = f.type.startsWith('video/');
+      const type: 'IMAGE' | 'VIDEO' | 'FILE' = isImage
+        ? 'IMAGE'
+        : isVideo
+          ? 'VIDEO'
+          : 'FILE';
+      const finalFile = isImage ? await compressImage(f) : f;
+      const fd = new FormData();
+      fd.append('file', finalFile);
+      fd.append('kind', isImage ? 'image' : isVideo ? 'video' : 'file');
+      const res = await fetch('/api/upload', { method: 'POST', body: fd });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.push({ message: data.error ?? 'не удалось загрузить', kind: 'error' });
+        continue;
+      }
+      const data = await res.json();
+      await sendMessage({
+        type,
+        mediaUrl: data.url,
+        mediaMimeType: data.mimeType,
+        content: type === 'FILE' ? `${finalFile.name}|${finalFile.size}` : undefined,
+      });
+    }
   }
 
   async function toggleArchive() {
@@ -644,7 +687,35 @@ export function ChatRoom({
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 chat-wallpaper">
+    <div
+      className="flex flex-col h-full min-h-0 chat-wallpaper relative"
+      onDragEnter={(e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        dropDepthRef.current += 1;
+        setDragOver(true);
+      }}
+      onDragOver={(e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+      }}
+      onDragLeave={(e) => {
+        if (!e.dataTransfer?.types?.includes('Files')) return;
+        // Use depth tracking — dragLeave also fires when crossing child
+        // element boundaries, otherwise the overlay flickers off mid-drag.
+        dropDepthRef.current = Math.max(0, dropDepthRef.current - 1);
+        if (dropDepthRef.current === 0) setDragOver(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer?.files?.length) return;
+        e.preventDefault();
+        dropDepthRef.current = 0;
+        setDragOver(false);
+        const files = Array.from(e.dataTransfer.files);
+        handleDroppedFiles(files);
+      }}
+    >
       <header className="sticky top-0 z-10 bg-bg-panel/95 backdrop-blur border-b border-border flex items-center gap-3 px-3 md:px-5 py-2.5 pt-[max(env(safe-area-inset-top),0.625rem)]">
         <Link
           href="/chat"
@@ -896,6 +967,16 @@ export function ChatRoom({
         onCancelEdit={() => setEditing(null)}
         onSubmitEdit={handleEditSubmit}
       />
+
+      {/* Drag-and-drop overlay — visible while user drags a file over the chat. */}
+      {dragOver && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-bg/85 backdrop-blur-sm pointer-events-none">
+          <div className="flex flex-col items-center gap-3 px-6 py-8 rounded-2xl border-2 border-dashed border-accent bg-bg-panel/95">
+            <Upload className="w-10 h-10 text-accent" />
+            <div className="text-[15px] font-medium">отпусти, чтобы отправить</div>
+          </div>
+        </div>
+      )}
 
       {isGroup && (
         <GroupInfoSheet

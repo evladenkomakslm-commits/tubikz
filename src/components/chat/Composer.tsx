@@ -8,6 +8,7 @@ import {
   Loader2,
   Paperclip,
   Video as VideoIcon,
+  File as FileIcon,
   Reply as ReplyIcon,
   Pencil,
 } from 'lucide-react';
@@ -17,6 +18,7 @@ import { useDebugStore } from '@/lib/debug-store';
 import { useSession } from 'next-auth/react';
 import { cn } from '@/lib/utils';
 import { loadDraft, saveDraft, clearDraft } from '@/lib/drafts';
+import { compressImage } from '@/lib/image-compress';
 import type { ChatMessage } from '@/types';
 
 type SendInput = {
@@ -73,6 +75,7 @@ export function Composer({
   const draftSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fileImageRef = useRef<HTMLInputElement>(null);
   const fileVideoRef = useRef<HTMLInputElement>(null);
+  const fileAnyRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const attachRef = useRef<HTMLDivElement>(null);
@@ -206,11 +209,17 @@ export function Composer({
     await onSend({ type: 'TEXT', content: v, replyToId });
   }
 
-  async function uploadAndSend(file: File, type: 'IMAGE' | 'VIDEO') {
+  async function uploadAndSend(file: File, type: 'IMAGE' | 'VIDEO' | 'FILE') {
     setUploading(true);
+    // Squeeze JPEGs / non-alpha PNGs down to ≤1920px before they hit the
+    // wire. This is the single biggest factor in mobile data usage.
+    const finalFile = type === 'IMAGE' ? await compressImage(file) : file;
     const fd = new FormData();
-    fd.append('file', file);
-    fd.append('kind', type === 'IMAGE' ? 'image' : 'video');
+    fd.append('file', finalFile);
+    fd.append(
+      'kind',
+      type === 'IMAGE' ? 'image' : type === 'VIDEO' ? 'video' : 'file',
+    );
     const res = await fetch('/api/upload', { method: 'POST', body: fd });
     if (!res.ok) {
       setUploading(false);
@@ -226,6 +235,9 @@ export function Composer({
       type,
       mediaUrl: data.url,
       mediaMimeType: data.mimeType,
+      // Preserve original filename + size for FILE type — needed for the
+      // bubble UI (filename + KB shown).
+      content: type === 'FILE' ? `${finalFile.name}|${finalFile.size}` : undefined,
       replyToId,
     });
   }
@@ -325,6 +337,16 @@ export function Composer({
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) uploadAndSend(f, 'VIDEO');
+          e.target.value = '';
+        }}
+      />
+      <input
+        ref={fileAnyRef}
+        type="file"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) uploadAndSend(f, 'FILE');
           e.target.value = '';
         }}
       />
@@ -461,6 +483,16 @@ export function Composer({
                       >
                         <VideoIcon className="w-4 h-4 text-success" />
                         видео
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAttachOpen(false);
+                          fileAnyRef.current?.click();
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+                      >
+                        <FileIcon className="w-4 h-4 text-text-muted" />
+                        файл
                       </button>
                     </motion.div>
                   )}
