@@ -43,12 +43,20 @@ export async function GET() {
 
   const summaries = await Promise.all(
     parts.map(async (p) => {
-      const last = p.conversation.messages[0] ?? null;
+      const lastRaw = p.conversation.messages[0] ?? null;
+      // Soft-deleted messages still show up in the timeline as a tombstone,
+      // so the list preview should reflect that too.
+      const last = lastRaw
+        ? lastRaw.deletedAt
+          ? { ...lastRaw, content: null, mediaUrl: null, mediaMimeType: null }
+          : lastRaw
+        : null;
       const unreadCount = await prisma.message.count({
         where: {
           conversationId: p.conversationId,
           createdAt: { gt: p.lastReadAt },
           senderId: { not: me },
+          deletedAt: null,
         },
       });
       return {

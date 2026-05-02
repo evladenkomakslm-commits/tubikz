@@ -4,12 +4,14 @@ import { ArrowLeft, Bookmark, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar } from '@/components/ui/Avatar';
 import { useSocket } from '@/hooks/useSocket';
+import { useToast } from '@/components/ui/Toast';
 import { MessageList } from './MessageList';
-import { Composer } from './Composer';
+import { Composer, type ReplyTarget, type EditTarget } from './Composer';
 import { TypingIndicator } from './TypingIndicator';
 import { CallButton } from '@/components/calls/CallButton';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, ReactionSummary } from '@/types';
 import { formatTime } from '@/lib/utils';
+import { useSession } from 'next-auth/react';
 
 interface PeerInfo {
   id: string;
@@ -18,6 +20,22 @@ interface PeerInfo {
   avatarUrl: string | null;
   isOnline: boolean;
   lastSeenAt: string;
+}
+
+/** Helper: rebuild `mine` flags on a server-broadcast reaction set. */
+function localizeReactions(
+  reactions: ReactionSummary[],
+  currentUserId: string,
+): ReactionSummary[] {
+  return reactions.map((r) => ({ ...r, mine: r.userIds.includes(currentUserId) }));
+}
+
+function previewOf(m: ChatMessage): string {
+  if (m.type === 'IMAGE') return 'фото';
+  if (m.type === 'VIDEO') return 'видео';
+  if (m.type === 'VOICE') return 'голосовое';
+  if (m.type === 'CALL') return 'звонок';
+  return m.content?.trim() || '...';
 }
 
 export function ChatRoom({
@@ -32,8 +50,13 @@ export function ChatRoom({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [peerTyping, setPeerTyping] = useState(false);
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [editing, setEditing] = useState<EditTarget | null>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const socket = useSocket();
+  const toast = useToast();
+  const { data: session } = useSession();
+  const myName = session?.user?.username ?? 'я';
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -63,9 +86,7 @@ export function ChatRoom({
     const onMessage = (payload: { message: ChatMessage }) => {
       if (payload.message.conversationId !== conversationId) return;
       // Sender flow: optimistic insert + API response is enough — the broadcast
-      // back to ourselves can race with the API resolution and create a duplicate
-      // because our optimistic id ('tmp-…') hasn't been swapped yet. Just ignore
-      // our own broadcasts.
+      // back to ourselves can race with the API resolution and create a duplicate.
       if (payload.message.senderId === currentUserId) return;
       setMessages((prev) => {
         if (prev.some((m) => m.id === payload.message.id)) return prev;
@@ -73,6 +94,46 @@ export function ChatRoom({
       });
       fetch(`/api/conversations/${conversationId}/read`, { method: 'POST' }).catch(
         () => {},
+      );
+    };
+
+    const onEdited = (payload: { message: ChatMessage }) => {
+      if (payload.message.conversationId !== conversationId) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === payload.message.id ? { ...m, ...payload.message } : m)),
+      );
+    };
+
+    const onDeleted = (payload: { conversationId: string; messageId: string }) => {
+      if (payload.conversationId !== conversationId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === payload.messageId
+            ? {
+                ...m,
+                content: null,
+                mediaUrl: null,
+                mediaMimeType: null,
+                deletedAt: new Date().toISOString(),
+                reactions: [],
+              }
+            : m,
+        ),
+      );
+      // If we were replying to or editing the now-deleted message, clear it.
+      setReplyTo((r) => (r && r.id === payload.messageId ? null : r));
+      setEditing((e) => (e && e.id === payload.messageId ? null : e));
+    };
+
+    const onReaction = (payload: {
+      conversationId: string;
+      messageId: string;
+      reactions: ReactionSummary[];
+    }) => {
+      if (payload.conversationId !== conversationId) return;
+      const localized = localizeReactions(payload.reactions, currentUserId);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === payload.messageId ? { ...m, reactions: localized } : m)),
       );
     };
 
@@ -113,11 +174,17 @@ export function ChatRoom({
     };
 
     socket.on('message:new', onMessage);
+    socket.on('message:edited', onEdited);
+    socket.on('message:deleted', onDeleted);
+    socket.on('message:reaction', onReaction);
     socket.on('message:read', onRead);
     socket.on('typing', onTyping);
     socket.on('presence', onPresence);
     return () => {
       socket.off('message:new', onMessage);
+      socket.off('message:edited', onEdited);
+      socket.off('message:deleted', onDeleted);
+      socket.off('message:reaction', onReaction);
       socket.off('message:read', onRead);
       socket.off('typing', onTyping);
       socket.off('presence', onPresence);
@@ -130,7 +197,13 @@ export function ChatRoom({
     mediaUrl?: string;
     mediaMimeType?: string;
     durationMs?: number;
+    replyToId?: string;
   }) {
+    // Resolve the optimistic replyTo preview from local state so the bubble
+    // can show the quote even before the server echoes back.
+    const replied = input.replyToId
+      ? messages.find((m) => m.id === input.replyToId)
+      : null;
     const optimistic: ChatMessage = {
       id: `tmp-${Date.now()}`,
       conversationId,
@@ -143,6 +216,21 @@ export function ChatRoom({
       createdAt: new Date().toISOString(),
       status: 'sending',
       readBy: [],
+      replyToId: input.replyToId ?? null,
+      replyTo: replied
+        ? {
+            id: replied.id,
+            senderId: replied.senderId,
+            senderName:
+              replied.senderId === currentUserId
+                ? myName
+                : peer?.displayName ?? peer?.username ?? '',
+            type: replied.type,
+            content: replied.content,
+            mediaUrl: replied.mediaUrl,
+          }
+        : null,
+      reactions: [],
     };
     setMessages((prev) => [...prev, optimistic]);
 
@@ -155,6 +243,7 @@ export function ChatRoom({
       setMessages((prev) =>
         prev.map((m) => (m.id === optimistic.id ? { ...m, status: 'sending' } : m)),
       );
+      toast.push({ message: 'не удалось отправить', kind: 'error' });
       return;
     }
     const data = await res.json();
@@ -169,6 +258,164 @@ export function ChatRoom({
     socket?.emit('typing', { conversationId, isTyping });
   }
 
+  // Action handlers passed down to MessageList → MessageBubble.
+  function handleReply(m: ChatMessage) {
+    if (m.deletedAt) return;
+    setEditing(null);
+    setReplyTo({
+      id: m.id,
+      senderName:
+        m.senderId === currentUserId
+          ? myName
+          : peer?.displayName ?? peer?.username ?? '',
+      preview: previewOf(m),
+    });
+  }
+
+  function handleEditStart(m: ChatMessage) {
+    if (m.senderId !== currentUserId || m.type !== 'TEXT' || m.deletedAt) return;
+    setReplyTo(null);
+    setEditing({ id: m.id, initialContent: m.content ?? '' });
+  }
+
+  async function handleEditSubmit(id: string, content: string) {
+    // Optimistic: patch the bubble locally first.
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id ? { ...m, content, editedAt: new Date().toISOString() } : m,
+      ),
+    );
+    const res = await fetch(`/api/conversations/${conversationId}/messages/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const code = (data?.error as string) ?? '';
+      toast.push({
+        message:
+          code === 'edit_window_expired'
+            ? 'нельзя редактировать спустя 48 часов'
+            : 'не удалось изменить',
+        kind: 'error',
+      });
+      // Reload to revert.
+      reload();
+    }
+  }
+
+  async function handleDelete(m: ChatMessage) {
+    if (m.senderId !== currentUserId || m.deletedAt) return;
+    if (typeof window !== 'undefined' && !window.confirm('удалить сообщение?')) return;
+    // Optimistic tombstone.
+    setMessages((prev) =>
+      prev.map((x) =>
+        x.id === m.id
+          ? {
+              ...x,
+              content: null,
+              mediaUrl: null,
+              mediaMimeType: null,
+              deletedAt: new Date().toISOString(),
+              reactions: [],
+            }
+          : x,
+      ),
+    );
+    const res = await fetch(`/api/conversations/${conversationId}/messages/${m.id}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      toast.push({ message: 'не удалось удалить', kind: 'error' });
+      reload();
+    }
+  }
+
+  async function handleReact(m: ChatMessage, emoji: string) {
+    if (m.deletedAt) return;
+    // Optimistic toggle.
+    setMessages((prev) =>
+      prev.map((x) => {
+        if (x.id !== m.id) return x;
+        const cur = x.reactions ?? [];
+        const idx = cur.findIndex((r) => r.emoji === emoji);
+        let next: ReactionSummary[];
+        if (idx === -1) {
+          next = [
+            ...cur,
+            { emoji, count: 1, userIds: [currentUserId], mine: true },
+          ];
+        } else {
+          const r = cur[idx];
+          if (r.mine) {
+            const newCount = r.count - 1;
+            next = newCount <= 0
+              ? cur.filter((_, i) => i !== idx)
+              : cur.map((rr, i) =>
+                  i === idx
+                    ? {
+                        ...rr,
+                        count: newCount,
+                        userIds: rr.userIds.filter((u) => u !== currentUserId),
+                        mine: false,
+                      }
+                    : rr,
+                );
+          } else {
+            next = cur.map((rr, i) =>
+              i === idx
+                ? {
+                    ...rr,
+                    count: rr.count + 1,
+                    userIds: [...rr.userIds, currentUserId],
+                    mine: true,
+                  }
+                : rr,
+            );
+          }
+        }
+        return { ...x, reactions: next };
+      }),
+    );
+    const res = await fetch(
+      `/api/conversations/${conversationId}/messages/${m.id}/reactions`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emoji }),
+      },
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.push({
+        message:
+          data?.error === 'too_many_reactions'
+            ? `не больше ${data.max ?? 4} реакций`
+            : 'реакция не сохранилась',
+        kind: 'error',
+      });
+      reload();
+      return;
+    }
+    const data = await res.json();
+    if (data.reactions) {
+      const localized = localizeReactions(data.reactions, currentUserId);
+      setMessages((prev) =>
+        prev.map((x) => (x.id === m.id ? { ...x, reactions: localized } : x)),
+      );
+    }
+  }
+
+  function handleJumpTo(messageId: string) {
+    const el = document.getElementById(`msg-${messageId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('msg-flash');
+      setTimeout(() => el.classList.remove('msg-flash'), 1200);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-text-muted">
@@ -179,7 +426,6 @@ export function ChatRoom({
 
   return (
     <div className="flex flex-col h-full min-h-0 chat-wallpaper">
-      {/* Sticky header with safe-area for iOS notch */}
       <header className="sticky top-0 z-10 bg-bg-panel/95 backdrop-blur border-b border-border flex items-center gap-3 px-3 md:px-5 py-2.5 pt-[max(env(safe-area-inset-top),0.625rem)]">
         <Link
           href="/chat"
@@ -233,12 +479,25 @@ export function ChatRoom({
         ) : null}
       </header>
 
-      <MessageList messages={messages} currentUserId={currentUserId} />
+      <MessageList
+        messages={messages}
+        currentUserId={currentUserId}
+        onReply={handleReply}
+        onEdit={handleEditStart}
+        onDelete={handleDelete}
+        onReact={handleReact}
+        onJumpTo={handleJumpTo}
+      />
       {!isSaved && peerTyping && <TypingIndicator />}
 
       <Composer
         onSend={sendMessage}
         onTyping={isSaved ? () => {} : emitTyping}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+        editing={editing}
+        onCancelEdit={() => setEditing(null)}
+        onSubmitEdit={handleEditSubmit}
       />
     </div>
   );

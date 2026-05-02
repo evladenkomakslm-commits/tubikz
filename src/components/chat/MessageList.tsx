@@ -8,9 +8,19 @@ import { formatDay } from '@/lib/utils';
 export function MessageList({
   messages,
   currentUserId,
+  onReply,
+  onEdit,
+  onDelete,
+  onReact,
+  onJumpTo,
 }: {
   messages: ChatMessage[];
   currentUserId: string;
+  onReply: (m: ChatMessage) => void;
+  onEdit: (m: ChatMessage) => void;
+  onDelete: (m: ChatMessage) => void;
+  onReact: (m: ChatMessage, emoji: string) => void;
+  onJumpTo: (messageId: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<string | null>(null);
@@ -53,7 +63,7 @@ export function MessageList({
             prev && prev.senderId === m.senderId &&
             new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < 60_000;
           return (
-            <div key={m.id}>
+            <div key={m.id} id={`msg-${m.id}`}>
               {showDay && (
                 <div className="flex justify-center my-4">
                   <span className="text-[11px] uppercase tracking-wider text-text-subtle bg-bg-panel border border-border rounded-full px-3 py-1">
@@ -71,6 +81,11 @@ export function MessageList({
                   message={m}
                   isMe={m.senderId === currentUserId}
                   grouped={grouped}
+                  onReply={() => onReply(m)}
+                  onEdit={() => onEdit(m)}
+                  onDelete={() => onDelete(m)}
+                  onReact={(emoji) => onReact(m, emoji)}
+                  onJumpTo={onJumpTo}
                 />
               </motion.div>
             </div>

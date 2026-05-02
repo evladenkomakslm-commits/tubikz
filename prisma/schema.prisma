@@ -31,6 +31,7 @@ model User {
   friendsOf        Friendship[]    @relation("FriendshipOwner")
   friends          Friendship[]    @relation("FriendshipFriend")
   readReceipts     MessageRead[]
+  reactions        MessageReaction[]
   outgoingCalls    Call[]         @relation("CallCaller")
   incomingCalls    Call[]         @relation("CallCallee")
   invitesCreated   InviteCode[]   @relation("InviteCreator")
@@ -209,15 +210,36 @@ model Message {
   mediaMimeType  String?
   durationMs     Int?
   callId         String?
+  replyToId      String?
   createdAt      DateTime    @default(now())
   editedAt       DateTime?
   deletedAt      DateTime?
 
-  conversation Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender       User          @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  conversation Conversation       @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User               @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   reads        MessageRead[]
+  reactions    MessageReaction[]
+  replyTo      Message?           @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies      Message[]          @relation("MessageReply")
 
   @@index([conversationId, createdAt])
+  @@index([replyToId])
+}
+
+/// Per-user emoji reactions on a message. Telegram-style — same user
+/// + same emoji is unique (toggle); different emoji adds another row.
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
 }
 
 model MessageRead {

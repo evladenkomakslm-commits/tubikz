@@ -88,3 +88,13 @@ body {
 .tk-btn-ghost {
   @apply tk-btn bg-bg-elevated text-text hover:bg-bg-hover border border-border;
 }
+
+/* Highlight flash when jumping to a quoted message. */
+@keyframes msg-flash {
+  0%, 100% { background-color: transparent; }
+  20%      { background-color: rgba(124, 92, 255, 0.18); }
+}
+.msg-flash {
+  animation: msg-flash 1.1s ease-out;
+  border-radius: 14px;
+}

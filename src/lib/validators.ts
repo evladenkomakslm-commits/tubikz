@@ -41,6 +41,15 @@ export const messageSchema = z.object({
   mediaUrl: z.string().optional(),
   mediaMimeType: z.string().optional(),
   durationMs: z.number().int().positive().optional(),
+  replyToId: z.string().min(1).optional(),
+});
+
+export const messageEditSchema = z.object({
+  content: z.string().min(1, 'нельзя пустое').max(4000),
+});
+
+export const reactionSchema = z.object({
+  emoji: z.string().min(1).max(16),
 });
 
 export const profileUpdateSchema = z.object({

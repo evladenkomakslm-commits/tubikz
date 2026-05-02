@@ -9,6 +9,27 @@ export interface ChatUser {
   lastSeenAt: string;
 }
 
+/** Lean projection of a message used inside `replyTo` so we don't recurse forever. */
+export interface ReplyPreview {
+  id: string;
+  senderId: string;
+  senderName: string;
+  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL';
+  content?: string | null;
+  mediaUrl?: string | null;
+  deleted?: boolean;
+}
+
+/** Aggregated reaction summary attached to a message. */
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  /** User ids of everyone who reacted with this emoji. */
+  userIds: string[];
+  /** True iff the current user is one of them. */
+  mine: boolean;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -20,6 +41,11 @@ export interface ChatMessage {
   durationMs?: number | null;
   callId?: string | null;
   createdAt: string;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  replyToId?: string | null;
+  replyTo?: ReplyPreview | null;
+  reactions?: ReactionSummary[];
   status?: MessageStatus;
   readBy?: string[];
 }
@@ -36,6 +62,14 @@ export interface ConversationSummary {
 
 export type SocketEvent =
   | { type: 'message:new'; message: ChatMessage }
+  | { type: 'message:edited'; message: ChatMessage }
+  | { type: 'message:deleted'; conversationId: string; messageId: string }
+  | {
+      type: 'message:reaction';
+      conversationId: string;
+      messageId: string;
+      reactions: ReactionSummary[];
+    }
   | { type: 'message:read'; conversationId: string; userId: string; messageIds: string[] }
   | { type: 'typing'; conversationId: string; userId: string; isTyping: boolean }
   | { type: 'presence'; userId: string; isOnline: boolean };

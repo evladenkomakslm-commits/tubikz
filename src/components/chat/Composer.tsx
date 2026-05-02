@@ -8,6 +8,8 @@ import {
   Loader2,
   Paperclip,
   Video as VideoIcon,
+  Reply as ReplyIcon,
+  Pencil,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/Toast';
@@ -22,14 +24,36 @@ type SendInput = {
   mediaUrl?: string;
   mediaMimeType?: string;
   durationMs?: number;
+  replyToId?: string;
 };
+
+export interface ReplyTarget {
+  id: string;
+  senderName: string;
+  preview: string;
+}
+
+export interface EditTarget {
+  id: string;
+  initialContent: string;
+}
 
 export function Composer({
   onSend,
   onTyping,
+  replyTo,
+  onCancelReply,
+  editing,
+  onCancelEdit,
+  onSubmitEdit,
 }: {
   onSend: (input: SendInput) => Promise<void>;
   onTyping: (isTyping: boolean) => void;
+  replyTo?: ReplyTarget | null;
+  onCancelReply?: () => void;
+  editing?: EditTarget | null;
+  onCancelEdit?: () => void;
+  onSubmitEdit?: (id: string, content: string) => Promise<void>;
 }) {
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -45,6 +69,26 @@ export function Composer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const attachRef = useRef<HTMLDivElement>(null);
+
+  // When entering edit mode, prime the textarea with the existing content
+  // and focus it. When exiting, blank it.
+  useEffect(() => {
+    if (editing) {
+      setText(editing.initialContent);
+      requestAnimationFrame(() => {
+        taRef.current?.focus();
+        if (taRef.current) {
+          taRef.current.style.height = 'auto';
+          taRef.current.style.height = `${Math.min(taRef.current.scrollHeight, 160)}px`;
+        }
+      });
+    }
+  }, [editing]);
+
+  // Same when starting a reply — focus the textarea so the user can just type.
+  useEffect(() => {
+    if (replyTo) taRef.current?.focus();
+  }, [replyTo]);
 
   // Close attach popover on outside click.
   useEffect(() => {
@@ -74,14 +118,27 @@ export function Composer({
       taRef.current.style.height = 'auto';
       taRef.current.style.height = `${Math.min(taRef.current.scrollHeight, 160)}px`;
     }
-    onTyping(value.length > 0);
-    if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
-    typingTimerRef.current = setTimeout(() => onTyping(false), 2000);
+    if (!editing) {
+      onTyping(value.length > 0);
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = setTimeout(() => onTyping(false), 2000);
+    }
   }
 
   async function submit() {
     const v = text.trim();
     if (!v) return;
+
+    // Edit mode short-circuits everything else.
+    if (editing && onSubmitEdit) {
+      const id = editing.id;
+      const content = v;
+      setText('');
+      if (taRef.current) taRef.current.style.height = 'auto';
+      onCancelEdit?.();
+      await onSubmitEdit(id, content);
+      return;
+    }
 
     // Slash-команды — не отправляются, обрабатываются локально.
     if (v.startsWith('/')) {
@@ -112,10 +169,12 @@ export function Composer({
       // Неизвестная команда — отправим как обычный текст.
     }
 
+    const replyToId = replyTo?.id;
     setText('');
     if (taRef.current) taRef.current.style.height = 'auto';
     onTyping(false);
-    await onSend({ type: 'TEXT', content: v });
+    onCancelReply?.();
+    await onSend({ type: 'TEXT', content: v, replyToId });
   }
 
   async function uploadAndSend(file: File, type: 'IMAGE' | 'VIDEO') {
@@ -132,10 +191,13 @@ export function Composer({
     }
     const data = await res.json();
     setUploading(false);
+    const replyToId = replyTo?.id;
+    onCancelReply?.();
     await onSend({
       type,
       mediaUrl: data.url,
       mediaMimeType: data.mimeType,
+      replyToId,
     });
   }
 
@@ -170,11 +232,14 @@ export function Composer({
           return;
         }
         const data = await res.json();
+        const replyToId = replyTo?.id;
+        onCancelReply?.();
         await onSend({
           type: 'VOICE',
           mediaUrl: data.url,
           mediaMimeType: 'audio/webm',
           durationMs: duration,
+          replyToId,
         });
       };
       recorder.start();
@@ -208,6 +273,7 @@ export function Composer({
   }
 
   const hasText = text.trim().length > 0;
+  const showActionChip = !!editing || !!replyTo;
 
   return (
     <div className="border-t border-border/60 bg-bg-panel/95 backdrop-blur px-2 sm:px-3 py-2 pb-[max(env(safe-area-inset-bottom),0.5rem)]">
@@ -233,6 +299,50 @@ export function Composer({
           e.target.value = '';
         }}
       />
+
+      {/* Reply / edit chip — sits just above the input row. */}
+      <AnimatePresence>
+        {showActionChip && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-3 py-2 mb-1 bg-bg-elevated rounded-xl border-l-2 border-accent">
+              {editing ? (
+                <Pencil className="w-4 h-4 text-accent shrink-0" />
+              ) : (
+                <ReplyIcon className="w-4 h-4 text-accent shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-medium text-accent">
+                  {editing ? 'редактирование' : `ответ ${replyTo!.senderName}`}
+                </div>
+                <div className="text-[13px] text-text-muted truncate">
+                  {editing ? editing.initialContent : replyTo!.preview}
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (editing) {
+                    setText('');
+                    if (taRef.current) taRef.current.style.height = 'auto';
+                    onCancelEdit?.();
+                  } else {
+                    onCancelReply?.();
+                  }
+                }}
+                className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-text hover:bg-bg-hover transition-colors"
+                aria-label="отменить"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence mode="wait">
         {recording ? (
@@ -273,59 +383,61 @@ export function Composer({
             animate={{ opacity: 1 }}
             className="flex items-end gap-1.5"
           >
-            {/* Attach button + popover */}
-            <div ref={attachRef} className="relative shrink-0">
-              <button
-                onClick={() => setAttachOpen((v) => !v)}
-                disabled={uploading}
-                className={cn(
-                  'w-10 h-10 flex items-center justify-center rounded-full transition-all',
-                  attachOpen
-                    ? 'bg-accent-soft text-accent rotate-45'
-                    : 'text-text-muted hover:bg-bg-hover active:bg-bg-hover/80',
-                )}
-                title="прикрепить"
-                aria-label="прикрепить файл"
-              >
-                {uploading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Paperclip className="w-5 h-5" />
-                )}
-              </button>
-              <AnimatePresence>
-                {attachOpen && !uploading && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute bottom-full left-0 mb-2 bg-bg-panel border border-border rounded-2xl shadow-2xl p-1.5 flex flex-col gap-0.5 min-w-[160px]"
-                  >
-                    <button
-                      onClick={() => {
-                        setAttachOpen(false);
-                        fileImageRef.current?.click();
-                      }}
-                      className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+            {/* Hide attach when editing — can't change attachment of an existing message. */}
+            {!editing && (
+              <div ref={attachRef} className="relative shrink-0">
+                <button
+                  onClick={() => setAttachOpen((v) => !v)}
+                  disabled={uploading}
+                  className={cn(
+                    'w-10 h-10 flex items-center justify-center rounded-full transition-all',
+                    attachOpen
+                      ? 'bg-accent-soft text-accent rotate-45'
+                      : 'text-text-muted hover:bg-bg-hover active:bg-bg-hover/80',
+                  )}
+                  title="прикрепить"
+                  aria-label="прикрепить файл"
+                >
+                  {uploading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Paperclip className="w-5 h-5" />
+                  )}
+                </button>
+                <AnimatePresence>
+                  {attachOpen && !uploading && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute bottom-full left-0 mb-2 bg-bg-panel border border-border rounded-2xl shadow-2xl p-1.5 flex flex-col gap-0.5 min-w-[160px]"
                     >
-                      <ImageIcon className="w-4 h-4 text-accent" />
-                      фото
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAttachOpen(false);
-                        fileVideoRef.current?.click();
-                      }}
-                      className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
-                    >
-                      <VideoIcon className="w-4 h-4 text-success" />
-                      видео
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                      <button
+                        onClick={() => {
+                          setAttachOpen(false);
+                          fileImageRef.current?.click();
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+                      >
+                        <ImageIcon className="w-4 h-4 text-accent" />
+                        фото
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAttachOpen(false);
+                          fileVideoRef.current?.click();
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+                      >
+                        <VideoIcon className="w-4 h-4 text-success" />
+                        видео
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
             <div className="flex-1 flex items-end bg-bg-elevated rounded-3xl border border-border/60 focus-within:border-accent/60 transition-colors">
               <textarea
@@ -337,15 +449,19 @@ export function Composer({
                     e.preventDefault();
                     submit();
                   }
+                  if (e.key === 'Escape') {
+                    if (editing) onCancelEdit?.();
+                    else if (replyTo) onCancelReply?.();
+                  }
                 }}
                 rows={1}
-                placeholder="напиши сообщение"
+                placeholder={editing ? 'отредактируй сообщение' : 'напиши сообщение'}
                 className="flex-1 resize-none bg-transparent px-4 py-2.5 text-[15px] outline-none placeholder:text-text-subtle max-h-40"
               />
             </div>
 
             <AnimatePresence mode="wait" initial={false}>
-              {hasText ? (
+              {hasText || editing ? (
                 <motion.button
                   key="send"
                   initial={{ scale: 0.8, opacity: 0 }}
@@ -354,8 +470,8 @@ export function Composer({
                   transition={{ duration: 0.15 }}
                   onClick={submit}
                   className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-accent text-white shadow-md shadow-accent/30 active:scale-95 transition-transform"
-                  title="отправить"
-                  aria-label="отправить"
+                  title={editing ? 'сохранить' : 'отправить'}
+                  aria-label={editing ? 'сохранить' : 'отправить'}
                 >
                   <Send className="w-5 h-5 -ml-0.5" />
                 </motion.button>
