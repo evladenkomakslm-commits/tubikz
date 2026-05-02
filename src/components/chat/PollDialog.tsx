@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart3, Loader2, Plus, X } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
@@ -77,7 +78,12 @@ export function PollDialog({
     if (ok) onClose();
   }
 
-  return (
+  // We portal to document.body so the dialog escapes the Composer's
+  // `backdrop-blur` ancestor — which, per CSS, becomes a containing
+  // block for `position: fixed` descendants and clips the dialog into
+  // the small composer strip at the bottom of the screen.
+  if (typeof document === 'undefined') return null;
+  const tree = (
     <AnimatePresence>
       {open && (
         <motion.div
@@ -197,6 +203,7 @@ export function PollDialog({
       )}
     </AnimatePresence>
   );
+  return createPortal(tree, document.body);
 }
 
 function ToggleRow({
