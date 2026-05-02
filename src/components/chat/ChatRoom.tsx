@@ -22,6 +22,7 @@ import { MessageList } from './MessageList';
 import { Composer, type ReplyTarget, type EditTarget } from './Composer';
 import { TypingIndicator } from './TypingIndicator';
 import { GroupInfoSheet } from './GroupInfoSheet';
+import { ImageViewer, type GalleryImage } from './ImageViewer';
 import { CallButton } from '@/components/calls/CallButton';
 import { compressImage } from '@/lib/image-compress';
 import type { ChatMessage, ReactionSummary } from '@/types';
@@ -95,6 +96,8 @@ export function ChatRoom({
   const [menuOpen, setMenuOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
   const dropDepthRef = useRef(0);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -678,6 +681,36 @@ export function ChatRoom({
   }, [messages]);
   const topPinned = pinned[0] ?? null;
 
+  // Whole-conversation image gallery — used by the lightbox so it can
+  // navigate through every photo, not just the one tapped.
+  const gallery: GalleryImage[] = useMemo(() => {
+    const out: GalleryImage[] = [];
+    for (const m of messages) {
+      if (m.type !== 'IMAGE' || !m.mediaUrl || m.deletedAt) continue;
+      const senderName =
+        m.senderId === currentUserId
+          ? 'вы'
+          : members[m.senderId]?.displayName ??
+            members[m.senderId]?.username ??
+            peer?.displayName ??
+            peer?.username ??
+            '';
+      out.push({
+        id: m.id,
+        url: m.mediaUrl,
+        caption: senderName ? `${senderName}` : undefined,
+      });
+    }
+    return out;
+  }, [messages, members, peer, currentUserId]);
+
+  function openImage(messageId: string) {
+    const i = gallery.findIndex((g) => g.id === messageId);
+    if (i === -1) return;
+    setViewerIndex(i);
+    setViewerOpen(true);
+  }
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-text-muted">
@@ -954,6 +987,7 @@ export function ChatRoom({
         onReact={handleReact}
         onTogglePin={handleTogglePin}
         onJumpTo={handleJumpTo}
+        onOpenImage={openImage}
       />
       {!isSaved && peerTyping && <TypingIndicator />}
 
@@ -967,6 +1001,14 @@ export function ChatRoom({
         onCancelEdit={() => setEditing(null)}
         onSubmitEdit={handleEditSubmit}
       />
+
+      {viewerOpen && (
+        <ImageViewer
+          images={gallery}
+          startIndex={viewerIndex}
+          onClose={() => setViewerOpen(false)}
+        />
+      )}
 
       {/* Drag-and-drop overlay — visible while user drags a file over the chat. */}
       {dragOver && (

@@ -16,6 +16,7 @@ export function MessageList({
   onReact,
   onTogglePin,
   onJumpTo,
+  onOpenImage,
 }: {
   messages: ChatMessage[];
   currentUserId: string;
@@ -30,6 +31,7 @@ export function MessageList({
   onReact: (m: ChatMessage, emoji: string) => void;
   onTogglePin: (m: ChatMessage) => void;
   onJumpTo: (messageId: string) => void;
+  onOpenImage: (messageId: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastIdRef = useRef<string | null>(null);
@@ -98,6 +100,7 @@ export function MessageList({
                   onReact={(emoji) => onReact(m, emoji)}
                   onTogglePin={() => onTogglePin(m)}
                   onJumpTo={onJumpTo}
+                  onOpenImage={() => onOpenImage(m.id)}
                 />
               </motion.div>
             </div>

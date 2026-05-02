@@ -6,6 +6,7 @@ import { messageSchema } from '@/lib/validators';
 import { emitToConversation } from '@/server/socket-bus';
 import { messageInclude, toChatMessage } from '@/lib/messages';
 import { pushToUser } from '@/lib/push';
+import { extractUrls, resolvePreviews } from '@/lib/link-preview';
 
 async function assertParticipant(userId: string, conversationId: string) {
   const part = await prisma.participant.findUnique({
@@ -40,8 +41,40 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     include: messageInclude,
   });
 
+  // Bulk-fetch any cached link previews for URLs in the loaded TEXT
+  // messages — no live HTTP, just whatever's already in the cache so the
+  // history paint stays fast.
+  const allUrls = new Set<string>();
+  for (const m of messages) {
+    if (m.type === 'TEXT' && m.content && !m.deletedAt) {
+      for (const u of extractUrls(m.content)) allUrls.add(u);
+    }
+  }
+  const previews =
+    allUrls.size > 0
+      ? await prisma.linkPreview.findMany({ where: { url: { in: [...allUrls] } } })
+      : [];
+  const previewByUrl = new Map(previews.map((p) => [p.url, p]));
+
   return NextResponse.json({
-    messages: messages.reverse().map((m) => toChatMessage(m, session.user.id)),
+    messages: messages.reverse().map((m) => {
+      const projected = toChatMessage(m, session.user.id);
+      if (m.type === 'TEXT' && m.content && !m.deletedAt) {
+        const urls = extractUrls(m.content);
+        const matched = urls
+          .map((u) => previewByUrl.get(u))
+          .filter((p): p is NonNullable<typeof p> => !!p)
+          .map((p) => ({
+            url: p.url,
+            title: p.title,
+            description: p.description,
+            imageUrl: p.imageUrl,
+            siteName: p.siteName,
+          }));
+        if (matched.length > 0) projected.linkPreviews = matched;
+      }
+      return projected;
+    }),
   });
 }
 
@@ -102,7 +135,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     data: { updatedAt: new Date() },
   });
 
-  const payload = toChatMessage(created, session.user.id);
+  const initialPayload = toChatMessage(created, session.user.id);
+
+  // Resolve link previews for any URLs in the message before broadcasting.
+  // Cached previews come back instantly; uncached ones add ≤4s of latency
+  // (the fetcher times out on its own). Treated as best-effort — we attach
+  // whatever we could grab and move on.
+  let payload = initialPayload;
+  if (created.type === 'TEXT') {
+    const urls = extractUrls(created.content);
+    if (urls.length > 0) {
+      const previews = await resolvePreviews(urls);
+      if (previews.length > 0) {
+        payload = { ...initialPayload, linkPreviews: previews };
+      }
+    }
+  }
+
   emitToConversation(params.id, 'message:new', { message: payload });
 
   // Fan out web-push to every other participant whose chat isn't muted.

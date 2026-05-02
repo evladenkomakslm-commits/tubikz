@@ -20,6 +20,15 @@ export interface ReplyPreview {
   deleted?: boolean;
 }
 
+/** Cached OG/Twitter card metadata, attached inline to text messages. */
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  siteName: string | null;
+}
+
 /** Aggregated reaction summary attached to a message. */
 export interface ReactionSummary {
   emoji: string;
@@ -48,6 +57,7 @@ export interface ChatMessage {
   reactions?: ReactionSummary[];
   pinnedAt?: string | null;
   pinnedById?: string | null;
+  linkPreviews?: LinkPreview[];
   status?: MessageStatus;
   readBy?: string[];
 }

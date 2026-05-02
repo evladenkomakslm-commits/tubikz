@@ -44,6 +44,7 @@ export function MessageBubble({
   onReact,
   onTogglePin,
   onJumpTo,
+  onOpenImage,
 }: {
   message: ChatMessage;
   isMe: boolean;
@@ -56,6 +57,7 @@ export function MessageBubble({
   onReact: (emoji: string) => void;
   onTogglePin: () => void;
   onJumpTo: (messageId: string) => void;
+  onOpenImage?: () => void;
 }) {
   const status = inferStatus(message, isMe);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -299,12 +301,82 @@ export function MessageBubble({
             </p>
           )}
 
+          {/* Link previews — at most 2 cards under the text bubble. */}
+          {isText && message.linkPreviews && message.linkPreviews.length > 0 && (
+            <div className="-mt-1 mb-2 space-y-1.5">
+              {message.linkPreviews.slice(0, 2).map((p) => (
+                <a
+                  key={p.url}
+                  href={p.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className={cn(
+                    'block rounded-xl overflow-hidden border-l-2 transition-colors',
+                    isMe
+                      ? 'border-white/70 bg-white/10 hover:bg-white/15'
+                      : 'border-accent bg-bg-elevated hover:bg-bg-hover',
+                  )}
+                >
+                  {p.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.imageUrl}
+                      alt=""
+                      className="w-full max-h-40 object-cover"
+                      loading="lazy"
+                    />
+                  )}
+                  <div className="px-2.5 py-2">
+                    {p.siteName && (
+                      <div
+                        className={cn(
+                          'text-[11px] uppercase tracking-wider truncate',
+                          isMe ? 'text-white/70' : 'text-accent',
+                        )}
+                      >
+                        {p.siteName}
+                      </div>
+                    )}
+                    {p.title && (
+                      <div
+                        className={cn(
+                          'text-[13.5px] font-medium truncate',
+                          isMe ? 'text-white' : 'text-text',
+                        )}
+                      >
+                        {p.title}
+                      </div>
+                    )}
+                    {p.description && (
+                      <div
+                        className={cn(
+                          'text-[12px] line-clamp-2',
+                          isMe ? 'text-white/80' : 'text-text-muted',
+                        )}
+                      >
+                        {p.description}
+                      </div>
+                    )}
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+
           {message.type === 'IMAGE' && message.mediaUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={message.mediaUrl}
               alt="фото"
-              className="rounded-xl max-h-80 object-cover w-full"
+              onClick={(e) => {
+                // Don't fight the long-press menu — only open the viewer on
+                // a short tap that didn't open it.
+                if (longPressFiredRef.current) return;
+                e.stopPropagation();
+                onOpenImage?.();
+              }}
+              className="rounded-xl max-h-80 object-cover w-full cursor-pointer"
             />
           )}
 

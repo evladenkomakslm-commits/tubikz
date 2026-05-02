@@ -286,6 +286,20 @@ model MessageReaction {
   @@index([messageId])
 }
 
+/// Cache for fetched OG / Twitter card metadata. We dedup on URL so
+/// messages referencing the same link share the same row.
+model LinkPreview {
+  id          String   @id @default(cuid())
+  url         String   @unique
+  title       String?
+  description String?
+  imageUrl    String?
+  siteName    String?
+  fetchedAt   DateTime @default(now())
+
+  @@index([url])
+}
+
 model MessageRead {
   id        String   @id @default(cuid())
   messageId String
