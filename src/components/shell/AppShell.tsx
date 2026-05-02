@@ -6,27 +6,32 @@ import { CallProvider } from '@/components/calls/CallProvider';
 import { DebugBar } from '@/components/debug/DebugBar';
 
 /**
- * Track the iOS soft-keyboard height by watching `visualViewport`.
- * `interactive-widget=resizes-content` does this for free on iOS 16.4+,
- * but older iOS / older Capacitor WebView still leave a black gap below
- * the composer. Mirroring the visual viewport into a CSS variable lets
- * AppShell's outer container shrink in lockstep.
+ * Mirror the visual viewport's actual height into --app-h. iOS keeps the
+ * layout viewport at full screen height regardless of the keyboard, so we
+ * can't trust 100dvh / 100vh — they'd leave a strip of body bg below the
+ * composer. visualViewport.height *is* the visible area, so we use it
+ * verbatim and let body + AppShell pin to it.
  */
-function useKeyboardOffsetVar() {
+function useAppHeightVar() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const vv = window.visualViewport;
-    if (!vv) return;
     const apply = () => {
-      const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty('--kb', `${offset}px`);
+      const h = vv?.height ?? window.innerHeight;
+      document.documentElement.style.setProperty('--app-h', `${h}px`);
     };
     apply();
-    vv.addEventListener('resize', apply);
-    vv.addEventListener('scroll', apply);
+    if (vv) {
+      vv.addEventListener('resize', apply);
+      vv.addEventListener('scroll', apply);
+    }
+    window.addEventListener('orientationchange', apply);
     return () => {
-      vv.removeEventListener('resize', apply);
-      vv.removeEventListener('scroll', apply);
+      if (vv) {
+        vv.removeEventListener('resize', apply);
+        vv.removeEventListener('scroll', apply);
+      }
+      window.removeEventListener('orientationchange', apply);
     };
   }, []);
 }
@@ -39,7 +44,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const socket = useSocket();
-  useKeyboardOffsetVar();
+  useAppHeightVar();
 
   useEffect(() => {
     if (!socket) return;
@@ -68,11 +73,10 @@ export function AppShell({
         Desktop (md+): row with Sidebar on the left.
       */}
       <div
-        // height = visible viewport minus on-screen keyboard. On platforms
-        // that respect `interactive-widget=resizes-content`, --kb stays 0
-        // because the dvh itself shrinks; the JS hook is a fallback.
-        style={{ height: 'calc(100dvh - var(--kb, 0px))' }}
-        className="w-screen flex flex-col-reverse md:flex-row overflow-hidden bg-bg"
+        // h-full == 100% of body, which itself is glued to --app-h
+        // (== visualViewport.height). Keyboard open or closed, this
+        // exactly fills the visible region.
+        className="h-full w-screen flex flex-col-reverse md:flex-row overflow-hidden bg-bg"
       >
         <Sidebar user={user} />
         <div className="flex-1 min-w-0 flex flex-col bg-bg-subtle overflow-hidden">

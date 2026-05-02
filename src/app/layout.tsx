@@ -42,7 +42,16 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru" className="dark">
-      <body className="min-h-screen bg-bg text-text font-sans">
+      {/*
+        Body locks to the *visual* viewport (driven by --app-h), not the
+        layout viewport, so the iOS keyboard never leaves a black strip
+        between the composer and the keys. AppShell's hook fills --app-h
+        with `visualViewport.height`px on mount + on resize.
+      */}
+      <body
+        className="bg-bg text-text font-sans overflow-hidden overscroll-none"
+        style={{ height: 'var(--app-h, 100dvh)' }}
+      >
         <Providers>{children}</Providers>
       </body>
     </html>
