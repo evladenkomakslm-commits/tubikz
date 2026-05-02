@@ -75,6 +75,8 @@ export function toChatMessage(
     replyToId: m.replyToId,
     replyTo: toReplyPreview(m.replyTo ?? null),
     reactions: aggregateReactions(m.reactions, currentUserId),
+    pinnedAt: m.pinnedAt ? m.pinnedAt.toISOString() : null,
+    pinnedById: m.pinnedById,
     readBy: m.reads?.map((r) => r.userId) ?? [],
   };
 }

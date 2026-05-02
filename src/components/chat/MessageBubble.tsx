@@ -10,6 +10,8 @@ import {
   Pencil,
   Trash2,
   Copy,
+  Pin,
+  PinOff,
   Image as ImageIconSm,
   Video as VideoIconSm,
   Mic as MicIconSm,
@@ -19,6 +21,7 @@ import type { ChatMessage } from '@/types';
 import { cn, formatTime } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { haptic } from '@/lib/haptics';
+import { RichText } from '@/lib/markdown';
 import { VoiceBubble } from './VoiceBubble';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'] as const;
@@ -34,6 +37,7 @@ export function MessageBubble({
   onEdit,
   onDelete,
   onReact,
+  onTogglePin,
   onJumpTo,
 }: {
   message: ChatMessage;
@@ -43,6 +47,7 @@ export function MessageBubble({
   onEdit: () => void;
   onDelete: () => void;
   onReact: (emoji: string) => void;
+  onTogglePin: () => void;
   onJumpTo: (messageId: string) => void;
 }) {
   const status = inferStatus(message, isMe);
@@ -157,6 +162,7 @@ export function MessageBubble({
 
   const isText = message.type === 'TEXT';
   const hasReactions = (message.reactions?.length ?? 0) > 0;
+  const isPinned = !!message.pinnedAt;
 
   function startLongPress(e: React.TouchEvent | React.MouseEvent) {
     e.stopPropagation();
@@ -245,7 +251,7 @@ export function MessageBubble({
 
           {isText && (
             <p className="whitespace-pre-wrap break-words pb-3">
-              {message.content}
+              <RichText text={message.content ?? ''} />
               {/* Spacer for the absolutely-positioned time so it doesn't overlap the last word. */}
               <span className="inline-block w-16 align-bottom" aria-hidden />
             </p>
@@ -285,6 +291,7 @@ export function MessageBubble({
                 'right-2.5 bottom-1.5 px-1.5 py-0.5 rounded-full bg-black/40 backdrop-blur-sm text-white/90',
             )}
           >
+            {isPinned && <Pin className="w-3 h-3 mr-0.5" />}
             {message.editedAt && <span className="mr-0.5 italic opacity-80">ред.</span>}
             <span>{formatTime(message.createdAt)}</span>
             {isMe && (
@@ -420,6 +427,14 @@ export function MessageBubble({
                   }}
                 />
               )}
+              <MenuItem
+                icon={isPinned ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                label={isPinned ? 'открепить' : 'закрепить'}
+                onClick={() => {
+                  onTogglePin();
+                  setMenuOpen(false);
+                }}
+              />
               {isMe && message.type === 'TEXT' && (
                 <MenuItem
                   icon={<Pencil className="w-4 h-4" />}

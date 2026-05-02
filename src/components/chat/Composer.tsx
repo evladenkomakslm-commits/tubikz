@@ -16,6 +16,7 @@ import { useToast } from '@/components/ui/Toast';
 import { useDebugStore } from '@/lib/debug-store';
 import { useSession } from 'next-auth/react';
 import { cn } from '@/lib/utils';
+import { loadDraft, saveDraft, clearDraft } from '@/lib/drafts';
 import type { ChatMessage } from '@/types';
 
 type SendInput = {
@@ -39,6 +40,7 @@ export interface EditTarget {
 }
 
 export function Composer({
+  conversationId,
   onSend,
   onTyping,
   replyTo,
@@ -47,6 +49,7 @@ export function Composer({
   onCancelEdit,
   onSubmitEdit,
 }: {
+  conversationId: string;
   onSend: (input: SendInput) => Promise<void>;
   onTyping: (isTyping: boolean) => void;
   replyTo?: ReplyTarget | null;
@@ -55,6 +58,9 @@ export function Composer({
   onCancelEdit?: () => void;
   onSubmitEdit?: (id: string, content: string) => Promise<void>;
 }) {
+  // Initial seed from localStorage so the half-typed message survives
+  // navigation away and back. We can't read localStorage on the server,
+  // so it stays empty during SSR and gets hydrated on mount via effect.
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -64,11 +70,28 @@ export function Composer({
   const startedAtRef = useRef<number>(0);
   const tickRef = useRef<NodeJS.Timeout | null>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const draftSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const fileImageRef = useRef<HTMLInputElement>(null);
   const fileVideoRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const attachRef = useRef<HTMLDivElement>(null);
+
+  // Hydrate the draft when the conversation changes. Cleared by send.
+  useEffect(() => {
+    const v = loadDraft(conversationId);
+    setText(v);
+    // Resize textarea to fit prefilled content.
+    requestAnimationFrame(() => {
+      if (taRef.current) {
+        taRef.current.style.height = 'auto';
+        taRef.current.style.height = `${Math.min(taRef.current.scrollHeight, 160)}px`;
+      }
+    });
+    return () => {
+      if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [conversationId]);
 
   // When entering edit mode, prime the textarea with the existing content
   // and focus it. When exiting, blank it.
@@ -122,6 +145,11 @@ export function Composer({
       onTyping(value.length > 0);
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       typingTimerRef.current = setTimeout(() => onTyping(false), 2000);
+      // Persist draft after a short pause so we don't write on every keystroke.
+      if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+      draftSaveTimerRef.current = setTimeout(() => {
+        saveDraft(conversationId, value);
+      }, 350);
     }
   }
 
@@ -173,6 +201,7 @@ export function Composer({
     setText('');
     if (taRef.current) taRef.current.style.height = 'auto';
     onTyping(false);
+    clearDraft(conversationId);
     onCancelReply?.();
     await onSend({ type: 'TEXT', content: v, replyToId });
   }

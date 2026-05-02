@@ -12,6 +12,7 @@ export function MessageList({
   onEdit,
   onDelete,
   onReact,
+  onTogglePin,
   onJumpTo,
 }: {
   messages: ChatMessage[];
@@ -20,6 +21,7 @@ export function MessageList({
   onEdit: (m: ChatMessage) => void;
   onDelete: (m: ChatMessage) => void;
   onReact: (m: ChatMessage, emoji: string) => void;
+  onTogglePin: (m: ChatMessage) => void;
   onJumpTo: (messageId: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -85,6 +87,7 @@ export function MessageList({
                   onEdit={() => onEdit(m)}
                   onDelete={() => onDelete(m)}
                   onReact={(emoji) => onReact(m, emoji)}
+                  onTogglePin={() => onTogglePin(m)}
                   onJumpTo={onJumpTo}
                 />
               </motion.div>

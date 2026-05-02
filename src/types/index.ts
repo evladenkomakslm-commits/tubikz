@@ -46,6 +46,8 @@ export interface ChatMessage {
   replyToId?: string | null;
   replyTo?: ReplyPreview | null;
   reactions?: ReactionSummary[];
+  pinnedAt?: string | null;
+  pinnedById?: string | null;
   status?: MessageStatus;
   readBy?: string[];
 }
@@ -69,6 +71,13 @@ export type SocketEvent =
       conversationId: string;
       messageId: string;
       reactions: ReactionSummary[];
+    }
+  | {
+      type: 'message:pinned';
+      conversationId: string;
+      messageId: string;
+      pinnedAt: string | null;
+      pinnedById: string | null;
     }
   | { type: 'message:read'; conversationId: string; userId: string; messageIds: string[] }
   | { type: 'typing'; conversationId: string; userId: string; isTyping: boolean }

@@ -217,6 +217,8 @@ model Message {
   durationMs     Int?
   callId         String?
   replyToId      String?
+  pinnedAt       DateTime?
+  pinnedById     String?
   createdAt      DateTime    @default(now())
   editedAt       DateTime?
   deletedAt      DateTime?
@@ -230,6 +232,7 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([replyToId])
+  @@index([conversationId, pinnedAt])
 }
 
 /// Per-user emoji reactions on a message. Telegram-style — same user

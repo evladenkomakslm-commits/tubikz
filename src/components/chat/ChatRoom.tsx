@@ -1,6 +1,6 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Bookmark, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Bookmark, Loader2, Pin, X } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar } from '@/components/ui/Avatar';
 import { useSocket } from '@/hooks/useSocket';
@@ -137,6 +137,22 @@ export function ChatRoom({
       );
     };
 
+    const onPinned = (payload: {
+      conversationId: string;
+      messageId: string;
+      pinnedAt: string | null;
+      pinnedById: string | null;
+    }) => {
+      if (payload.conversationId !== conversationId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === payload.messageId
+            ? { ...m, pinnedAt: payload.pinnedAt, pinnedById: payload.pinnedById }
+            : m,
+        ),
+      );
+    };
+
     const onRead = (payload: {
       conversationId: string;
       userId: string;
@@ -177,6 +193,7 @@ export function ChatRoom({
     socket.on('message:edited', onEdited);
     socket.on('message:deleted', onDeleted);
     socket.on('message:reaction', onReaction);
+    socket.on('message:pinned', onPinned);
     socket.on('message:read', onRead);
     socket.on('typing', onTyping);
     socket.on('presence', onPresence);
@@ -185,6 +202,7 @@ export function ChatRoom({
       socket.off('message:edited', onEdited);
       socket.off('message:deleted', onDeleted);
       socket.off('message:reaction', onReaction);
+      socket.off('message:pinned', onPinned);
       socket.off('message:read', onRead);
       socket.off('typing', onTyping);
       socket.off('presence', onPresence);
@@ -416,6 +434,47 @@ export function ChatRoom({
     }
   }
 
+  async function handleTogglePin(m: ChatMessage) {
+    const wasPinned = !!m.pinnedAt;
+    // Optimistic flip.
+    setMessages((prev) =>
+      prev.map((x) =>
+        x.id === m.id
+          ? {
+              ...x,
+              pinnedAt: wasPinned ? null : new Date().toISOString(),
+              pinnedById: wasPinned ? null : currentUserId,
+            }
+          : x,
+      ),
+    );
+    const res = await fetch(
+      `/api/conversations/${conversationId}/messages/${m.id}/pin`,
+      { method: 'POST' },
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast.push({
+        message:
+          data?.error === 'too_many_pins'
+            ? `больше ${data.max ?? 10} закреплённых нельзя`
+            : 'не удалось изменить закрепление',
+        kind: 'error',
+      });
+      reload();
+      return;
+    }
+    toast.push({ message: wasPinned ? 'откреплено' : 'закреплено' });
+  }
+
+  // Most-recently pinned message — drives the banner under the header.
+  const pinned = useMemo(() => {
+    const list = messages.filter((m) => m.pinnedAt && !m.deletedAt);
+    list.sort((a, b) => (a.pinnedAt! < b.pinnedAt! ? 1 : -1));
+    return list;
+  }, [messages]);
+  const topPinned = pinned[0] ?? null;
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-text-muted">
@@ -479,6 +538,42 @@ export function ChatRoom({
         ) : null}
       </header>
 
+      {/* Pinned banner — sticks under the header, click to jump. */}
+      {topPinned && !isSaved && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => handleJumpTo(topPinned.id)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              handleJumpTo(topPinned.id);
+            }
+          }}
+          className="flex items-center gap-3 px-3 md:px-5 py-2 bg-bg-panel/95 backdrop-blur border-b border-border text-left hover:bg-bg-hover cursor-pointer transition-colors"
+        >
+          <Pin className="w-4 h-4 text-accent shrink-0" />
+          <div className="flex-1 min-w-0 border-l-2 border-accent pl-2">
+            <div className="text-[12px] font-medium text-accent">
+              закреплённое{pinned.length > 1 ? ` · ${pinned.length}` : ''}
+            </div>
+            <div className="text-[13px] text-text-muted truncate">
+              {previewOf(topPinned)}
+            </div>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleTogglePin(topPinned);
+            }}
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-text-muted hover:text-text hover:bg-bg-hover transition-colors"
+            aria-label="открепить"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       <MessageList
         messages={messages}
         currentUserId={currentUserId}
@@ -486,11 +581,13 @@ export function ChatRoom({
         onEdit={handleEditStart}
         onDelete={handleDelete}
         onReact={handleReact}
+        onTogglePin={handleTogglePin}
         onJumpTo={handleJumpTo}
       />
       {!isSaved && peerTyping && <TypingIndicator />}
 
       <Composer
+        conversationId={conversationId}
         onSend={sendMessage}
         onTyping={isSaved ? () => {} : emitTyping}
         replyTo={replyTo}

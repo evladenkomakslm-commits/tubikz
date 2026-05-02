@@ -9,6 +9,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { useSocket } from '@/hooks/useSocket';
 import { useToast } from '@/components/ui/Toast';
 import { cn, formatDay } from '@/lib/utils';
+import { loadAllDrafts } from '@/lib/drafts';
 
 interface ConvSummary {
   id: string;
@@ -37,6 +38,7 @@ export function ChatList() {
   const { data: session } = useSession();
   const meId = session?.user?.id;
   const [conversations, setConversations] = useState<ConvSummary[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const socket = useSocket();
   const toast = useToast();
 
@@ -49,6 +51,25 @@ export function ChatList() {
   useEffect(() => {
     load();
   }, []);
+
+  // Refresh drafts whenever conv list changes or user navigates between chats.
+  // Drafts live in localStorage so we just re-read on demand.
+  useEffect(() => {
+    if (conversations.length === 0) return;
+    setDrafts(loadAllDrafts(conversations.map((c) => c.id)));
+  }, [conversations.length, params?.id]);
+
+  // Listen for cross-tab draft updates so opening a chat in one tab and
+  // typing there reflects in the list of another tab.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key?.startsWith('tk:draft:')) return;
+      setDrafts(loadAllDrafts(conversations.map((c) => c.id)));
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [conversations]);
 
   // When user opens a chat, locally zero its unread badge — server-side
   // the ChatRoom will POST /read on mount.
@@ -211,7 +232,16 @@ export function ChatList() {
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
                         <div className="text-[13px] text-text-muted truncate leading-snug">
-                          {c.lastMessage ? preview(c.lastMessage, meId) : 'нет сообщений'}
+                          {drafts[c.id] ? (
+                            <>
+                              <span className="text-danger">черновик:</span>{' '}
+                              {drafts[c.id]}
+                            </>
+                          ) : c.lastMessage ? (
+                            preview(c.lastMessage, meId)
+                          ) : (
+                            'нет сообщений'
+                          )}
                         </div>
                         {c.unreadCount > 0 && !active && (
                           <span className="bg-accent text-white text-[11px] font-semibold rounded-full px-1.5 min-w-[20px] h-5 flex items-center justify-center shrink-0">
