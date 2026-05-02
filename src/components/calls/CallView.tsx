@@ -3,12 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Mic,
   MicOff,
-  Phone,
   PhoneOff,
   Video,
   VideoOff,
   Minimize2,
   Signal,
+  ScreenShare,
+  ScreenShareOff,
+  Smile,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCallStore } from '@/lib/calls/store';
@@ -16,14 +20,20 @@ import { getCallController } from './CallProvider';
 import { Avatar } from '@/components/ui/Avatar';
 import { cn } from '@/lib/utils';
 
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '🔥', '🤯'] as const;
+
 export function CallView() {
   const call = useCallStore((s) => s.call);
   const localStream = useCallStore((s) => s.localStream);
   const remoteStream = useCallStore((s) => s.remoteStream);
   const micMuted = useCallStore((s) => s.micMuted);
   const cameraOff = useCallStore((s) => s.cameraOff);
+  const screenSharing = useCallStore((s) => s.screenSharing);
+  const noiseSuppression = useCallStore((s) => s.noiseSuppression);
+  const reactions = useCallStore((s) => s.reactions);
   const quality = useCallStore((s) => s.quality);
   const setMinimized = useCallStore((s) => s.setMinimized);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -126,9 +136,40 @@ export function CallView() {
           )}
         </div>
 
+        {/* Floating reaction layer */}
+        <ReactionLayer reactions={reactions} />
+
+        {/* Quick reaction picker */}
+        <AnimatePresence>
+          {reactionPickerOpen && (
+            <motion.div
+              initial={{ y: 16, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 16, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="absolute bottom-32 left-1/2 -translate-x-1/2 flex gap-1.5 bg-bg-panel/90 backdrop-blur-md rounded-full px-2 py-1.5 border border-white/10 shadow-2xl"
+              onMouseLeave={() => setReactionPickerOpen(false)}
+            >
+              {QUICK_REACTIONS.map((e) => (
+                <motion.button
+                  key={e}
+                  whileTap={{ scale: 1.4 }}
+                  onClick={() => {
+                    controller.sendReaction(e);
+                    setReactionPickerOpen(false);
+                  }}
+                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 text-2xl transition-colors"
+                >
+                  {e}
+                </motion.button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Controls */}
         <div className="bg-gradient-to-t from-black to-transparent pb-8 pt-12">
-          <div className="flex items-center justify-center gap-5">
+          <div className="flex items-center justify-center gap-3 sm:gap-5 flex-wrap px-2">
             <ControlButton
               active={micMuted}
               onClick={controller.toggleMic}
@@ -140,6 +181,25 @@ export function CallView() {
                 <MicOff className="w-6 h-6" />
               ) : (
                 <Mic className="w-6 h-6" />
+              )}
+            </ControlButton>
+
+            {/* Noise suppression — only meaningful while mic is on. */}
+            <ControlButton
+              active={!noiseSuppression}
+              onClick={controller.toggleNoiseSuppression}
+              activeColor="bg-amber-500/80"
+              inactiveColor="bg-white/15"
+              label={
+                noiseSuppression
+                  ? 'шумоподавление вкл.'
+                  : 'шумоподавление выкл.'
+              }
+            >
+              {noiseSuppression ? (
+                <Volume2 className="w-6 h-6" />
+              ) : (
+                <VolumeX className="w-6 h-6" />
               )}
             </ControlButton>
 
@@ -169,6 +229,31 @@ export function CallView() {
               </ControlButton>
             )}
 
+            {/* Screen share — works in audio + video calls. */}
+            <ControlButton
+              active={screenSharing}
+              onClick={() => void controller.toggleScreenShare()}
+              activeColor="bg-accent"
+              inactiveColor="bg-white/15"
+              label={screenSharing ? 'выкл. демо экрана' : 'демонстрация экрана'}
+            >
+              {screenSharing ? (
+                <ScreenShareOff className="w-6 h-6" />
+              ) : (
+                <ScreenShare className="w-6 h-6" />
+              )}
+            </ControlButton>
+
+            <ControlButton
+              active={reactionPickerOpen}
+              onClick={() => setReactionPickerOpen((v) => !v)}
+              activeColor="bg-accent"
+              inactiveColor="bg-white/15"
+              label="реакция"
+            >
+              <Smile className="w-6 h-6" />
+            </ControlButton>
+
             <button
               onClick={controller.hangup}
               className="w-16 h-16 rounded-full bg-danger flex items-center justify-center shadow-2xl shadow-danger/40 hover:scale-105 active:scale-95 transition-transform"
@@ -180,6 +265,49 @@ export function CallView() {
         </div>
       </motion.div>
     </AnimatePresence>
+  );
+}
+
+/**
+ * Floats incoming + outgoing emoji reactions up the screen. Each entry
+ * lives ~1.2s and self-prunes via a setTimeout. Outgoing reactions
+ * (`side: 'me'`) lean right; incoming lean left so it's clear who
+ * fired what.
+ */
+function ReactionLayer({
+  reactions,
+}: {
+  reactions: { id: number; emoji: string; side: 'me' | 'peer' }[];
+}) {
+  // Track which ids have already animated; prune from store after their
+  // exit so we don't re-render a list of stale rows.
+  // Since we don't have direct mutation API for the array, we just key
+  // by id — AnimatePresence handles enter/exit and the queue is capped
+  // upstream in the store.
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <AnimatePresence>
+        {reactions.map((r) => (
+          <motion.div
+            key={r.id}
+            initial={{ opacity: 0, y: 0, scale: 0.6 }}
+            animate={{
+              opacity: [0, 1, 1, 0],
+              y: -120,
+              scale: [0.6, 1.4, 1.2],
+            }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+            style={{
+              [r.side === 'me' ? 'right' : 'left']: `${20 + Math.random() * 20}%`,
+            }}
+            className="absolute bottom-44 text-5xl drop-shadow-2xl"
+          >
+            {r.emoji}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
   );
 }
 

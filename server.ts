@@ -155,6 +155,7 @@ void app.prepare().then(() => {
     socket.on('call:decline', fwd('call:decline'));
     socket.on('call:hangup', fwd('call:hangup'));
     socket.on('call:renegotiate', fwd('call:renegotiate'));
+    socket.on('call:reaction', fwd('call:reaction'));
 
     socket.on('disconnect', async () => {
       const remaining = await io.in(`user:${userId}`).fetchSockets();

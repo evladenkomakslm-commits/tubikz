@@ -33,6 +33,9 @@ interface CallContextValue {
   toggleMic: () => void;
   toggleCamera: () => void;
   enableCameraMidCall: () => Promise<void>;
+  toggleScreenShare: () => Promise<void>;
+  toggleNoiseSuppression: () => Promise<void>;
+  sendReaction: (emoji: string) => void;
 }
 
 let providerCtx: CallContextValue | null = null;
@@ -58,6 +61,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setRemoteStream,
     setMicMuted,
     setCameraOff,
+    setScreenSharing,
+    setNoiseSuppression,
+    pushReaction,
     setMinimized,
     setQuality,
     setRingtone,
@@ -272,6 +278,51 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     patchCall({ type: 'VIDEO' });
   }, [patchCall, setLocalStream]);
 
+  const toggleScreenShare = useCallback(async () => {
+    const ps = peerRef.current;
+    if (!ps) return;
+    if (ps.isScreenSharing()) {
+      await ps.stopScreenShare();
+      setScreenSharing(false);
+      const local = useCallStore.getState().localStream;
+      if (local) setLocalStream(new MediaStream(local.getTracks()));
+    } else {
+      const track = await ps.startScreenShare();
+      if (!track) return; // user cancelled
+      setScreenSharing(true);
+      // Screen share implies a video session.
+      patchCall({ type: 'VIDEO' });
+      const local = useCallStore.getState().localStream;
+      if (local) setLocalStream(new MediaStream(local.getTracks()));
+      // Keep the local-preview camera-off flag in sync — screen share
+      // overrides camera and the "camera off" indicator would lie.
+      setCameraOff(false);
+    }
+  }, [patchCall, setLocalStream, setScreenSharing, setCameraOff]);
+
+  const toggleNoiseSuppression = useCallback(async () => {
+    const ps = peerRef.current;
+    if (!ps) return;
+    const next = !useCallStore.getState().noiseSuppression;
+    await ps.setNoiseSuppression(next);
+    setNoiseSuppression(next);
+  }, [setNoiseSuppression]);
+
+  /** Fire a one-shot emoji reaction. Local burst + socket push to peer. */
+  const sendReaction = useCallback(
+    (emoji: string) => {
+      const cur = useCallStore.getState().call;
+      if (!cur || !socket) return;
+      pushReaction({ id: Date.now() + Math.random(), emoji, side: 'me' });
+      socket.emit('call:reaction', {
+        to: cur.peer.id,
+        callId: cur.callId,
+        emoji,
+      });
+    },
+    [pushReaction, socket],
+  );
+
   // ===== Wire Socket.io listeners =====
   useEffect(() => {
     if (!socket || !me?.id) return;
@@ -352,6 +403,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    const onReaction = (payload: { callId: string; emoji: string; from: string }) => {
+      const cur = useCallStore.getState().call;
+      if (!cur || cur.callId !== payload.callId) return;
+      pushReaction({
+        id: Date.now() + Math.random(),
+        emoji: payload.emoji,
+        side: 'peer',
+      });
+    };
+
     socket.on('call:invite', onInvite);
     socket.on('call:answer', onAnswer);
     socket.on('call:ice', onIce);
@@ -359,6 +420,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     socket.on('call:cancel', onCancel);
     socket.on('call:hangup', onHangup);
     socket.on('call:renegotiate', onRenegotiate);
+    socket.on('call:reaction', onReaction);
 
     return () => {
       socket.off('call:invite', onInvite);
@@ -368,8 +430,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       socket.off('call:cancel', onCancel);
       socket.off('call:hangup', onHangup);
       socket.off('call:renegotiate', onRenegotiate);
+      socket.off('call:reaction', onReaction);
     };
-  }, [socket, me?.id, setCall, patchCall, setRingtone, toast, finalize]);
+  }, [socket, me?.id, setCall, patchCall, setRingtone, toast, finalize, pushReaction]);
 
   // ===== Browser notification for incoming calls =====
   useEffect(() => {
@@ -402,6 +465,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       toggleMic,
       toggleCamera,
       enableCameraMidCall,
+      toggleScreenShare,
+      toggleNoiseSuppression,
+      sendReaction,
     }),
     [
       startCall,
@@ -411,6 +477,9 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       toggleMic,
       toggleCamera,
       enableCameraMidCall,
+      toggleScreenShare,
+      toggleNoiseSuppression,
+      sendReaction,
     ],
   );
   providerCtx = ctx;

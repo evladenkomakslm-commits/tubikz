@@ -34,6 +34,11 @@ export class PeerSession {
   private prevBytesReceived = 0;
   private prevTimestamp = 0;
   private callbacks: PeerCallbacks;
+  // Screen share state. When sharing, the video sender's track is the
+  // display track; the original camera track (if any) is parked here so
+  // we can restore it on stop.
+  private screenTrack: MediaStreamTrack | null = null;
+  private parkedCameraTrack: MediaStreamTrack | null = null;
 
   constructor(callbacks: PeerCallbacks) {
     this.callbacks = callbacks;
@@ -121,6 +126,101 @@ export class PeerSession {
 
   setCameraEnabled(enabled: boolean) {
     this.localStream?.getVideoTracks().forEach((t) => (t.enabled = enabled));
+  }
+
+  /**
+   * Toggle browser noise suppression on the active audio track via
+   * applyConstraints (no renegotiation needed). Browsers all support
+   * the standard MediaTrackConstraints flag; if applyConstraints fails
+   * we just swallow it.
+   */
+  async setNoiseSuppression(enabled: boolean) {
+    const track = this.localStream?.getAudioTracks()[0];
+    if (!track) return;
+    try {
+      await track.applyConstraints({
+        echoCancellation: true,
+        noiseSuppression: enabled,
+        autoGainControl: enabled,
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /**
+   * Replace the outgoing video sender's track with a captured screen.
+   * Returns the new track (or null if the user cancelled the picker).
+   * The original camera track is parked and re-attached on stop.
+   */
+  async startScreenShare(): Promise<MediaStreamTrack | null> {
+    if (this.screenTrack) return this.screenTrack;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30, max: 30 } },
+        audio: false,
+      });
+    } catch {
+      return null;
+    }
+    const [track] = stream.getVideoTracks();
+    if (!track) return null;
+    this.screenTrack = track;
+
+    let sender = this.pc.getSenders().find((s) => s.track?.kind === 'video');
+    if (sender?.track) {
+      this.parkedCameraTrack = sender.track;
+      // Don't stop the camera track — we want to put it back later.
+      await sender.replaceTrack(track);
+    } else {
+      // No video sender yet (audio-only call): add one.
+      sender = this.pc.addTrack(track, this.localStream ?? new MediaStream());
+    }
+
+    // The browser's "stop sharing" button on top of the screen fires `ended`.
+    track.onended = () => {
+      void this.stopScreenShare();
+    };
+
+    // Mirror in localStream so the self-preview shows the screen too.
+    if (this.localStream) {
+      const old = this.localStream.getVideoTracks()[0];
+      if (old) this.localStream.removeTrack(old);
+      this.localStream.addTrack(track);
+    }
+
+    return track;
+  }
+
+  async stopScreenShare() {
+    if (!this.screenTrack) return;
+    const screen = this.screenTrack;
+    this.screenTrack = null;
+
+    const sender = this.pc.getSenders().find((s) => s.track === screen);
+    if (sender) {
+      if (this.parkedCameraTrack && this.parkedCameraTrack.readyState === 'live') {
+        await sender.replaceTrack(this.parkedCameraTrack);
+      } else {
+        await sender.replaceTrack(null);
+      }
+    }
+
+    // Stop the screen capture so the browser drops the indicator.
+    screen.stop();
+
+    if (this.localStream) {
+      this.localStream.removeTrack(screen);
+      if (this.parkedCameraTrack && this.parkedCameraTrack.readyState === 'live') {
+        this.localStream.addTrack(this.parkedCameraTrack);
+      }
+    }
+    this.parkedCameraTrack = null;
+  }
+
+  isScreenSharing(): boolean {
+    return !!this.screenTrack;
   }
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
