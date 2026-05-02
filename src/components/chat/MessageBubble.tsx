@@ -18,9 +18,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { ChatMessage } from '@/types';
 import { cn, formatTime } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
+import { haptic } from '@/lib/haptics';
 import { VoiceBubble } from './VoiceBubble';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'] as const;
+
+/** Burst payload — a copy of an emoji that scales up + drifts before fading. */
+type Burst = { id: number; emoji: string };
 
 export function MessageBubble({
   message,
@@ -43,10 +47,34 @@ export function MessageBubble({
 }) {
   const status = inferStatus(message, isMe);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [bursts, setBursts] = useState<Burst[]>([]);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const longPressFiredRef = useRef(false);
   const isDeleted = !!message.deletedAt;
   const toast = useToast();
+
+  /**
+   * Reaction tap — both from the long-press strip and from the chip below
+   * the bubble. We compute "is this the user adding (vs removing)" against
+   * the *current* reactions snapshot and only fire the pop animation +
+   * haptic on add. Removal is intentionally quiet, like Telegram.
+   */
+  function fireReact(emoji: string) {
+    const existing = (message.reactions ?? []).find((r) => r.emoji === emoji);
+    const isAdding = !existing?.mine;
+    if (isAdding) {
+      haptic('pop');
+      const id = Date.now() + Math.random();
+      setBursts((b) => [...b, { id, emoji }]);
+      // Animation runs ~700ms; clean up after.
+      window.setTimeout(() => {
+        setBursts((b) => b.filter((x) => x.id !== id));
+      }, 800);
+    } else {
+      haptic('tap');
+    }
+    onReact(emoji);
+  }
 
   async function copyContent() {
     const text = message.content ?? '';
@@ -269,13 +297,20 @@ export function MessageBubble({
           </button>
         </div>
 
-        {/* Reactions row, just under the bubble. */}
+        {/* Reactions row, just under the bubble. Each chip pulses on count change. */}
         {hasReactions && (
           <div className={cn('flex flex-wrap gap-1 mt-1', isMe ? 'justify-end' : 'justify-start')}>
             {message.reactions!.map((r) => (
-              <button
+              <motion.button
                 key={r.emoji}
-                onClick={() => onReact(r.emoji)}
+                onClick={() => fireReact(r.emoji)}
+                // `key={count}` would re-mount; we'd rather animate in place.
+                // Use the count as the animation trigger via `animate`.
+                animate={{ scale: [1, 1.18, 1] }}
+                transition={{ duration: 0.28, ease: 'easeOut' }}
+                whileTap={{ scale: 0.9 }}
+                // Re-run the keyframes whenever the count changes.
+                custom={r.count}
                 className={cn(
                   'inline-flex items-center gap-1 rounded-full text-[12px] px-2 py-0.5 border transition-colors',
                   r.mine
@@ -286,10 +321,33 @@ export function MessageBubble({
               >
                 <span className="leading-none">{r.emoji}</span>
                 <span className="tabular-nums">{r.count}</span>
-              </button>
+              </motion.button>
             ))}
           </div>
         )}
+
+        {/* Burst layer — pops out from where the bubble lives and floats up. */}
+        <div
+          className={cn(
+            'pointer-events-none absolute top-1/2 -translate-y-1/2 z-40',
+            isMe ? 'right-2' : 'left-2',
+          )}
+        >
+          <AnimatePresence>
+            {bursts.map((b) => (
+              <motion.span
+                key={b.id}
+                initial={{ scale: 0.4, opacity: 0, y: 0 }}
+                animate={{ scale: [0.4, 1.6, 1.2], opacity: [0, 1, 0], y: -48 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute text-3xl select-none drop-shadow-lg"
+              >
+                {b.emoji}
+              </motion.span>
+            ))}
+          </AnimatePresence>
+        </div>
 
         {/* Floating action menu — opens on long-press / right-click. */}
         <AnimatePresence>
@@ -310,17 +368,19 @@ export function MessageBubble({
               {/* Quick reactions row */}
               <div className="flex items-center justify-between gap-0.5 px-1 pb-1 border-b border-border/60">
                 {QUICK_EMOJIS.map((e) => (
-                  <button
+                  <motion.button
                     key={e}
+                    whileTap={{ scale: 1.4 }}
+                    transition={{ duration: 0.12 }}
                     onClick={() => {
-                      onReact(e);
+                      fireReact(e);
                       setMenuOpen(false);
                     }}
                     className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg-hover text-lg transition-colors"
                     aria-label={`реакция ${e}`}
                   >
                     {e}
-                  </button>
+                  </motion.button>
                 ))}
               </div>
               <MenuItem
