@@ -1,4 +1,5 @@
 import { prisma } from './db';
+import { isBlockedBetween } from './blocks';
 
 export async function acceptFriendRequest(requestId: string, currentUserId: string) {
   const request = await prisma.friendRequest.findUnique({ where: { id: requestId } });
@@ -37,6 +38,10 @@ export async function acceptFriendRequest(requestId: string, currentUserId: stri
 
 /** Find or create a 1-1 conversation between two users. */
 export async function ensureDirectConversation(userA: string, userB: string) {
+  // Refuse if either side has blocked the other.
+  if (await isBlockedBetween(userA, userB)) {
+    throw new Error('blocked');
+  }
   const existing = await prisma.conversation.findFirst({
     where: {
       type: 'DIRECT',

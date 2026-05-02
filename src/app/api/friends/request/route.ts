@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { acceptFriendRequest } from '@/lib/friends';
+import { isBlockedBetween } from '@/lib/blocks';
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -19,6 +20,10 @@ export async function POST(req: Request) {
 
   const target = await prisma.user.findUnique({ where: { id: toUserId } });
   if (!target) return NextResponse.json({ error: 'user not found' }, { status: 404 });
+
+  if (await isBlockedBetween(session.user.id, toUserId)) {
+    return NextResponse.json({ error: 'blocked' }, { status: 403 });
+  }
 
   const existingFriendship = await prisma.friendship.findUnique({
     where: { ownerId_friendId: { ownerId: session.user.id, friendId: toUserId } },

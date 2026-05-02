@@ -105,6 +105,13 @@ export async function POST(req: Request) {
   if (peerId === session.user.id) {
     return NextResponse.json({ error: 'cannot chat with yourself' }, { status: 400 });
   }
-  const id = await ensureDirectConversation(session.user.id, peerId);
-  return NextResponse.json({ id });
+  try {
+    const id = await ensureDirectConversation(session.user.id, peerId);
+    return NextResponse.json({ id });
+  } catch (e) {
+    if (e instanceof Error && e.message === 'blocked') {
+      return NextResponse.json({ error: 'blocked' }, { status: 403 });
+    }
+    throw e;
+  }
 }

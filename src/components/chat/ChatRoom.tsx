@@ -7,10 +7,12 @@ import {
   Bell,
   BellOff,
   Bookmark,
+  Flag,
   Loader2,
   MoreVertical,
   Pin,
   Upload,
+  UserX,
   X,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -241,6 +243,50 @@ export function ChatRoom({
         content: type === 'FILE' ? `${finalFile.name}|${finalFile.size}` : undefined,
       });
     }
+  }
+
+  /** Block the DIRECT-chat peer. Confirms first; on success bounces to /chat. */
+  async function blockPeer() {
+    if (!peer) return;
+    if (
+      !confirm(
+        `заблокировать ${peer.displayName ?? peer.username}? они не смогут писать вам, и наоборот.`,
+      )
+    )
+      return;
+    const r = await fetch(`/api/blocks/${peer.id}`, { method: 'POST' });
+    if (!r.ok) {
+      toast.push({ message: 'не удалось заблокировать', kind: 'error' });
+      return;
+    }
+    toast.push({ message: 'заблокирован' });
+    if (typeof window !== 'undefined') window.location.href = '/chat';
+  }
+
+  /** Report the DIRECT-chat peer for abuse. Quick prompt for reason. */
+  async function reportPeer() {
+    if (!peer) return;
+    const reason = window.prompt(
+      'причина (spam / harassment / explicit / other)?',
+      'spam',
+    );
+    if (!reason) return;
+    const REASON_MAP: Record<string, 'SPAM' | 'HARASSMENT' | 'EXPLICIT' | 'OTHER'> = {
+      spam: 'SPAM',
+      harassment: 'HARASSMENT',
+      explicit: 'EXPLICIT',
+      other: 'OTHER',
+    };
+    const mapped = REASON_MAP[reason.toLowerCase().trim()] ?? 'OTHER';
+    const r = await fetch('/api/reports', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetUserId: peer.id, reason: mapped }),
+    });
+    toast.push({
+      message: r.ok ? 'спасибо, мы рассмотрим' : 'не удалось отправить',
+      kind: r.ok ? 'success' : 'error',
+    });
   }
 
   async function toggleArchive() {
@@ -1020,6 +1066,23 @@ export function ChatRoom({
                     label={isArchived ? 'из архива' : 'в архив'}
                     onClick={() => {
                       toggleArchive();
+                      setMenuOpen(false);
+                    }}
+                  />
+                  <div className="h-px bg-border my-1" />
+                  <HMenuItem
+                    icon={<Flag className="w-4 h-4 text-danger" />}
+                    label="пожаловаться"
+                    onClick={() => {
+                      reportPeer();
+                      setMenuOpen(false);
+                    }}
+                  />
+                  <HMenuItem
+                    icon={<UserX className="w-4 h-4 text-danger" />}
+                    label="заблокировать"
+                    onClick={() => {
+                      blockPeer();
                       setMenuOpen(false);
                     }}
                   />

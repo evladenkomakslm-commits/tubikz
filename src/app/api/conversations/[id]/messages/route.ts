@@ -7,6 +7,8 @@ import { emitToConversation } from '@/server/socket-bus';
 import { messageInclude, toChatMessage } from '@/lib/messages';
 import { pushToUser } from '@/lib/push';
 import { extractUrls, resolvePreviews } from '@/lib/link-preview';
+import { isBlockedBetween } from '@/lib/blocks';
+import { audienceAllows } from '@/lib/privacy';
 
 async function assertParticipant(userId: string, conversationId: string) {
   const part = await prisma.participant.findUnique({
@@ -94,6 +96,35 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   if (!(await assertParticipant(session.user.id, params.id))) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  // Block + privacy gate for DIRECT chats: refuse to write a message
+  // to a 1:1 conversation with a user who blocked you (or vice versa),
+  // and respect the recipient's "who can message me" setting.
+  const conv = await prisma.conversation.findUnique({
+    where: { id: params.id },
+    select: {
+      type: true,
+      participants: { select: { userId: true } },
+    },
+  });
+  if (conv?.type === 'DIRECT') {
+    const peerId = conv.participants.find((p) => p.userId !== session.user.id)?.userId;
+    if (peerId) {
+      if (await isBlockedBetween(session.user.id, peerId)) {
+        return NextResponse.json({ error: 'blocked' }, { status: 403 });
+      }
+      const peer = await prisma.user.findUnique({
+        where: { id: peerId },
+        select: { messageAudience: true },
+      });
+      if (
+        peer &&
+        !(await audienceAllows(peer.messageAudience, peerId, session.user.id))
+      ) {
+        return NextResponse.json({ error: 'not_allowed_to_message' }, { status: 403 });
+      }
+    }
   }
 
   const body = await req.json().catch(() => null);

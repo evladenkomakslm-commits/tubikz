@@ -27,6 +27,10 @@ model User {
   isOnline      Boolean  @default(false)
   isAdmin       Boolean  @default(false)
   lastSeenAt    DateTime @default(now())
+  // Privacy controls — see PrivacyAudience values.
+  lastSeenAudience  PrivacyAudience @default(EVERYONE)
+  searchAudience    PrivacyAudience @default(EVERYONE)
+  messageAudience   PrivacyAudience @default(EVERYONE)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -46,6 +50,10 @@ model User {
   sessions         ActiveSession[]
   pushSubs         PushSubscription[]
   pollVotes        PollVote[]
+  blocksMade       Block[]            @relation("BlockerBlocks")
+  blocksAgainst    Block[]            @relation("BlockedBlocks")
+  reportsMade      Report[]           @relation("Reporter")
+  reportsAgainst   Report[]           @relation("ReportedUser")
 
   @@index([username])
   @@index([email])
@@ -115,6 +123,19 @@ model ActiveSession {
   @@index([userId])
 }
 
+enum PrivacyAudience {
+  EVERYONE
+  FRIENDS
+  NOBODY
+}
+
+enum ReportReason {
+  SPAM
+  HARASSMENT
+  EXPLICIT
+  OTHER
+}
+
 enum RequestStatus {
   PENDING
   ACCEPTED
@@ -133,6 +154,40 @@ model FriendRequest {
 
   @@unique([fromUserId, toUserId])
   @@index([toUserId, status])
+}
+
+/// Symmetrical block. The presence of any row between (a, b) means
+/// either side cannot direct-message, friend-request, or call the other.
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("BlockerBlocks", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("BlockedBlocks", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}
+
+/// Abuse reports. We keep them around for an admin queue.
+model Report {
+  id              String       @id @default(cuid())
+  reporterId      String
+  targetUserId    String?
+  targetMessageId String?
+  reason          ReportReason
+  details         String?
+  createdAt       DateTime     @default(now())
+
+  reporter   User    @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetUser User?   @relation("ReportedUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetMessage Message? @relation(fields: [targetMessageId], references: [id], onDelete: SetNull)
+
+  @@index([targetUserId])
+  @@index([createdAt])
 }
 
 model Friendship {
@@ -273,6 +328,7 @@ model Message {
   replyTo      Message?           @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies      Message[]          @relation("MessageReply")
   poll         Poll?
+  reports      Report[]
 
   @@index([conversationId, createdAt])
   @@index([replyToId])

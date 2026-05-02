@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { canManageMembers, loadGroupContext } from '@/lib/groups';
 import { emitToConversation } from '@/server/socket-bus';
+import { audienceAllows } from '@/lib/privacy';
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -31,6 +32,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
               avatarUrl: true,
               isOnline: true,
               lastSeenAt: true,
+              lastSeenAudience: true,
             },
           },
         },
@@ -39,7 +41,22 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   });
   if (!conversation) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
-  const peer = conversation.participants.find((p) => p.userId !== me)?.user ?? null;
+  // Apply lastSeen privacy: redact lastSeenAt + isOnline if peer's setting
+  // doesn't permit me to see it.
+  const rawPeer = conversation.participants.find((p) => p.userId !== me)?.user ?? null;
+  let peer: {
+    id: string;
+    username: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+    isOnline: boolean;
+    lastSeenAt: Date;
+  } | null = null;
+  if (rawPeer) {
+    const allowed = await audienceAllows(rawPeer.lastSeenAudience, rawPeer.id, me);
+    const { lastSeenAudience: _ls, ...rest } = rawPeer;
+    peer = allowed ? rest : { ...rest, isOnline: false, lastSeenAt: new Date(0) };
+  }
 
   return NextResponse.json({
     conversation: {
