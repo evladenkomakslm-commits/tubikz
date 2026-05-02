@@ -6,8 +6,14 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // App runtime uses the pooled URL (PgBouncer in transaction mode).
+  url       = env("DATABASE_URL")
+  // Migrations need a direct connection — PgBouncer's transaction pooling
+  // breaks Prisma's advisory-lock handshake and `migrate deploy` times out.
+  // Set DIRECT_URL to the un-pooled Neon connection string (host without
+  // `-pooler`). If unset, Prisma falls back to `url`.
+  directUrl = env("DIRECT_URL")
 }
 
 model User {

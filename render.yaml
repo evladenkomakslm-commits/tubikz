@@ -27,7 +27,9 @@ services:
       - key: PORT
         value: 10000
       - key: DATABASE_URL
-        sync: false                     # задашь руками в Dashboard (Neon URL)
+        sync: false                     # pooled Neon URL (с -pooler в host)
+      - key: DIRECT_URL
+        sync: false                     # прямой Neon URL (без -pooler) для миграций
       - key: NEXTAUTH_SECRET
         generateValue: true             # Render сгенерирует сам
       - key: NEXTAUTH_URL
