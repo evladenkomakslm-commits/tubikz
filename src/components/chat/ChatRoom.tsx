@@ -52,6 +52,11 @@ function previewOf(m: ChatMessage): string {
   if (m.type === 'VOICE') return 'голосовое';
   if (m.type === 'CALL') return 'звонок';
   if (m.type === 'POLL') return `📊 ${m.poll?.question ?? m.content ?? 'опрос'}`;
+  if (m.type === 'LOCATION') return '📍 локация';
+  if (m.type === 'CONTACT') {
+    const username = (m.content ?? '').split('|')[1] ?? '';
+    return `👤 ${username || 'контакт'}`;
+  }
   if (m.type === 'FILE') {
     // FILE bubble stashes "filename|size" in content; show only the name.
     return (m.content ?? '').split('|')[0] || 'файл';
@@ -447,6 +452,7 @@ export function ChatRoom({
     mediaMimeType?: string;
     durationMs?: number;
     replyToId?: string;
+    scheduledAt?: string;
   }) {
     // Resolve the optimistic replyTo preview from local state so the bubble
     // can show the quote even before the server echoes back.
@@ -466,6 +472,8 @@ export function ChatRoom({
       status: 'sending',
       readBy: [],
       replyToId: input.replyToId ?? null,
+      scheduledAt: input.scheduledAt ?? null,
+      scheduledFiredAt: null,
       replyTo: replied
         ? {
             id: replied.id,

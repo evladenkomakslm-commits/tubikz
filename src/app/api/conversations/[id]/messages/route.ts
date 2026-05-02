@@ -31,10 +31,19 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   // Note: we no longer hard-filter `deletedAt: null` — we still want the
   // tombstone visible in the timeline ("сообщение удалено") so reply chains
   // don't go silent. The projection in `toChatMessage` handles the redaction.
+  //
+  // Scheduled-but-not-yet-fired messages are visible only to their sender,
+  // so they can see / cancel their own pending sends without leaking them
+  // to the other side of the chat.
   const messages = await prisma.message.findMany({
     where: {
       conversationId: params.id,
       ...(before ? { createdAt: { lt: new Date(before) } } : {}),
+      OR: [
+        { scheduledAt: null },
+        { scheduledFiredAt: { not: null } },
+        { senderId: session.user.id },
+      ],
     },
     orderBy: { createdAt: 'desc' },
     take: limit,
@@ -95,12 +104,43 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       { status: 400 },
     );
   }
-  const { type, content, mediaUrl, mediaMimeType, durationMs, replyToId } = parsed.data;
+  const {
+    type,
+    content,
+    mediaUrl,
+    mediaMimeType,
+    durationMs,
+    replyToId,
+    scheduledAt: scheduledAtRaw,
+  } = parsed.data;
   if (type === 'TEXT' && !content?.trim()) {
     return NextResponse.json({ error: 'empty message' }, { status: 400 });
   }
-  if (type !== 'TEXT' && !mediaUrl) {
+  // LOCATION + CONTACT carry their data inside `content`, no mediaUrl.
+  if (
+    type !== 'TEXT' &&
+    type !== 'LOCATION' &&
+    type !== 'CONTACT' &&
+    !mediaUrl
+  ) {
     return NextResponse.json({ error: 'mediaUrl required' }, { status: 400 });
+  }
+  if ((type === 'LOCATION' || type === 'CONTACT') && !content?.trim()) {
+    return NextResponse.json({ error: 'content required' }, { status: 400 });
+  }
+
+  // Schedule-for-later: clamp to future, max 1 year out.
+  let scheduledAt: Date | null = null;
+  if (scheduledAtRaw) {
+    const target = new Date(scheduledAtRaw);
+    const now = Date.now();
+    if (target.getTime() < now + 30_000) {
+      return NextResponse.json({ error: 'scheduled_too_soon' }, { status: 400 });
+    }
+    if (target.getTime() > now + 365 * 24 * 60 * 60 * 1000) {
+      return NextResponse.json({ error: 'scheduled_too_far' }, { status: 400 });
+    }
+    scheduledAt = target;
   }
 
   // Validate the reply target lives in the same conversation. Otherwise
@@ -126,14 +166,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       mediaMimeType: mediaMimeType ?? null,
       durationMs: durationMs ?? null,
       replyToId: validReplyToId,
+      scheduledAt,
     },
     include: messageInclude,
   });
 
-  await prisma.conversation.update({
-    where: { id: params.id },
-    data: { updatedAt: new Date() },
-  });
+  // Scheduled messages don't bump the conversation's updatedAt — that
+  // happens when they actually fire.
+  if (!scheduledAt) {
+    await prisma.conversation.update({
+      where: { id: params.id },
+      data: { updatedAt: new Date() },
+    });
+  }
 
   const initialPayload = toChatMessage(created, session.user.id);
 
@@ -150,6 +195,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         payload = { ...initialPayload, linkPreviews: previews };
       }
     }
+  }
+
+  // Scheduled messages aren't broadcast / pushed yet — they show up only
+  // for the sender (handled in GET below) until the cron flips them.
+  if (scheduledAt) {
+    return NextResponse.json({ message: payload });
   }
 
   emitToConversation(params.id, 'message:new', { message: payload });

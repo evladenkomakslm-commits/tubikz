@@ -119,6 +119,8 @@ export function toChatMessage(
     pinnedById: m.pinnedById,
     readBy: m.reads?.map((r) => r.userId) ?? [],
     poll: m.poll ? toPollView(m.poll, currentUserId) : null,
+    scheduledAt: m.scheduledAt ? m.scheduledAt.toISOString() : null,
+    scheduledFiredAt: m.scheduledFiredAt ? m.scheduledFiredAt.toISOString() : null,
   };
 }
 

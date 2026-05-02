@@ -12,6 +12,9 @@ import {
   Reply as ReplyIcon,
   Pencil,
   BarChart3,
+  MapPin,
+  UserRound,
+  Clock,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/Toast';
@@ -21,6 +24,9 @@ import { cn } from '@/lib/utils';
 import { loadDraft, saveDraft, clearDraft } from '@/lib/drafts';
 import { compressImage } from '@/lib/image-compress';
 import { PollDialog } from './PollDialog';
+import { LocationDialog } from './LocationDialog';
+import { ContactPicker } from './ContactPicker';
+import { ScheduleDialog } from './ScheduleDialog';
 import type { ChatMessage } from '@/types';
 
 type SendInput = {
@@ -30,6 +36,8 @@ type SendInput = {
   mediaMimeType?: string;
   durationMs?: number;
   replyToId?: string;
+  /** ISO timestamp; if set, server delivers later. */
+  scheduledAt?: string;
 };
 
 export interface ReplyTarget {
@@ -81,6 +89,9 @@ export function Composer({
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [pollOpen, setPollOpen] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const attachRef = useRef<HTMLDivElement>(null);
 
   // Hydrate the draft when the conversation changes. Cleared by send.
@@ -203,13 +214,18 @@ export function Composer({
       // Неизвестная команда — отправим как обычный текст.
     }
 
+    await dispatchText(v);
+  }
+
+  /** Common send-text path used by both Enter and the Schedule dialog. */
+  async function dispatchText(text: string, scheduledAt?: string) {
     const replyToId = replyTo?.id;
     setText('');
     if (taRef.current) taRef.current.style.height = 'auto';
     onTyping(false);
     clearDraft(conversationId);
     onCancelReply?.();
-    await onSend({ type: 'TEXT', content: v, replyToId });
+    await onSend({ type: 'TEXT', content: text, replyToId, scheduledAt });
   }
 
   async function uploadAndSend(file: File, type: 'IMAGE' | 'VIDEO' | 'FILE') {
@@ -507,6 +523,26 @@ export function Composer({
                         <BarChart3 className="w-4 h-4 text-fuchsia-400" />
                         опрос
                       </button>
+                      <button
+                        onClick={() => {
+                          setAttachOpen(false);
+                          setLocationOpen(true);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+                      >
+                        <MapPin className="w-4 h-4 text-rose-400" />
+                        локация
+                      </button>
+                      <button
+                        onClick={() => {
+                          setAttachOpen(false);
+                          setContactOpen(true);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+                      >
+                        <UserRound className="w-4 h-4 text-sky-400" />
+                        контакт
+                      </button>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -536,6 +572,19 @@ export function Composer({
                 className="flex-1 resize-none bg-transparent px-4 py-2.5 text-base outline-none placeholder:text-text-subtle max-h-40"
               />
             </div>
+
+            {/* Schedule button — only visible while there is text and we're
+                not editing an existing message. */}
+            {hasText && !editing && (
+              <button
+                onClick={() => setScheduleOpen(true)}
+                className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full text-text-muted hover:text-accent hover:bg-bg-hover transition-colors"
+                title="отложить отправку"
+                aria-label="отложить отправку"
+              >
+                <Clock className="w-5 h-5" />
+              </button>
+            )}
 
             <AnimatePresence mode="wait" initial={false}>
               {hasText || editing ? (
@@ -589,6 +638,60 @@ export function Composer({
             return false;
           }
           return true;
+        }}
+      />
+
+      <LocationDialog
+        open={locationOpen}
+        onClose={() => setLocationOpen(false)}
+        onShare={async (lat, lng) => {
+          await onSend({
+            type: 'LOCATION',
+            content: `${lat.toFixed(6)},${lng.toFixed(6)}`,
+            replyToId: replyTo?.id,
+          });
+          onCancelReply?.();
+          return true;
+        }}
+      />
+
+      <ContactPicker
+        open={contactOpen}
+        onClose={() => setContactOpen(false)}
+        onShare={async (f) => {
+          // pipe-separated: id|username|displayName|avatarUrl
+          const content = [
+            f.id,
+            f.username,
+            f.displayName ?? '',
+            f.avatarUrl ?? '',
+          ].join('|');
+          await onSend({
+            type: 'CONTACT',
+            content,
+            replyToId: replyTo?.id,
+          });
+          onCancelReply?.();
+          return true;
+        }}
+      />
+
+      <ScheduleDialog
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        onConfirm={(date) => {
+          const v = text.trim();
+          if (!v) return;
+          // Schedule path uses the same dispatch flow but with scheduledAt set.
+          dispatchText(v, date.toISOString());
+          toast.push({
+            message: `отложено на ${date.toLocaleString('ru-RU', {
+              day: '2-digit',
+              month: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}`,
+          });
         }}
       />
     </div>

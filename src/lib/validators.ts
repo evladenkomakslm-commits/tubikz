@@ -36,12 +36,17 @@ export const loginSchema = z.object({
 
 export const messageSchema = z.object({
   conversationId: z.string().min(1),
-  type: z.enum(['TEXT', 'IMAGE', 'VIDEO', 'VOICE', 'FILE']).default('TEXT'),
+  type: z
+    .enum(['TEXT', 'IMAGE', 'VIDEO', 'VOICE', 'FILE', 'LOCATION', 'CONTACT'])
+    .default('TEXT'),
   content: z.string().max(4000).optional(),
   mediaUrl: z.string().optional(),
   mediaMimeType: z.string().optional(),
   durationMs: z.number().int().positive().optional(),
   replyToId: z.string().min(1).optional(),
+  // Schedule-for-later. ISO timestamp. The server clamps to >= now+30s
+  // so users can't accidentally schedule into the past.
+  scheduledAt: z.string().datetime().optional(),
 });
 
 export const messageEditSchema = z.object({

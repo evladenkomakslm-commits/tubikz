@@ -14,7 +14,7 @@ export interface ReplyPreview {
   id: string;
   senderId: string;
   senderName: string;
-  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL' | 'POLL';
+  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL' | 'POLL' | 'LOCATION' | 'CONTACT';
   content?: string | null;
   mediaUrl?: string | null;
   deleted?: boolean;
@@ -61,7 +61,7 @@ export interface ChatMessage {
   id: string;
   conversationId: string;
   senderId: string;
-  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL' | 'POLL';
+  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL' | 'POLL' | 'LOCATION' | 'CONTACT';
   content?: string | null;
   mediaUrl?: string | null;
   mediaMimeType?: string | null;
@@ -77,6 +77,8 @@ export interface ChatMessage {
   pinnedById?: string | null;
   linkPreviews?: LinkPreview[];
   poll?: PollView | null;
+  scheduledAt?: string | null;
+  scheduledFiredAt?: string | null;
   status?: MessageStatus;
   readBy?: string[];
 }

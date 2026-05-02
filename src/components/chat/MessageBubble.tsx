@@ -14,6 +14,7 @@ import {
   PinOff,
   Download,
   File as FileIcon,
+  MapPin,
   Image as ImageIconSm,
   Video as VideoIconSm,
   Mic as MicIconSm,
@@ -184,8 +185,11 @@ export function MessageBubble({
 
   const isText = message.type === 'TEXT';
   const isPoll = message.type === 'POLL';
-  // Both TEXT and POLL render with text-style padding (not media-style p-1).
-  const usesTextLayout = isText || isPoll;
+  const isLocation = message.type === 'LOCATION';
+  const isContact = message.type === 'CONTACT';
+  // TEXT-style padding for cards that look better with breathing room around
+  // their inner content (POLL/LOCATION/CONTACT). FILE still uses media-p-1.
+  const usesTextLayout = isText || isPoll || isLocation || isContact;
   const hasReactions = (message.reactions?.length ?? 0) > 0;
   const isPinned = !!message.pinnedAt;
 
@@ -412,6 +416,72 @@ export function MessageBubble({
             </div>
           )}
 
+          {isLocation && message.content && (() => {
+            // content = "lat,lng[,label]"
+            const [latStr, lngStr] = message.content.split(',');
+            const lat = parseFloat(latStr);
+            const lng = parseFloat(lngStr);
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+            const map = staticMapTile(lat, lng);
+            const open = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=15/${lat}/${lng}`;
+            return (
+              <a
+                href={open}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="block min-w-[220px] max-w-[300px] rounded-xl overflow-hidden pb-3 group/loc"
+              >
+                <div className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={map}
+                    alt="карта"
+                    className="w-full h-32 object-cover bg-bg-elevated"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div
+                      className={cn(
+                        'rounded-full p-1.5 shadow-md',
+                        isMe ? 'bg-white text-accent' : 'bg-accent text-white',
+                      )}
+                    >
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    'pt-2 px-1 flex items-center gap-1.5 text-[12.5px]',
+                    isMe ? 'text-white/85' : 'text-text-muted',
+                  )}
+                >
+                  <MapPin className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate group-hover/loc:underline">
+                    локация · {lat.toFixed(4)}, {lng.toFixed(4)}
+                  </span>
+                </div>
+              </a>
+            );
+          })()}
+
+          {isContact && message.content && (() => {
+            // content = "userId|username|displayName|avatarUrl?"
+            const [userId, username, displayName, avatarUrl] = (
+              message.content ?? ''
+            ).split('|');
+            if (!username) return null;
+            return (
+              <ContactCardInline
+                isMe={isMe}
+                userId={userId}
+                username={username}
+                displayName={displayName || null}
+                avatarUrl={avatarUrl || null}
+              />
+            );
+          })()}
+
           {message.type === 'FILE' && message.mediaUrl && (() => {
             // We stash "filename|sizeBytes" in `content` at upload time so
             // the bubble can render a proper file card without needing
@@ -476,9 +546,16 @@ export function MessageBubble({
                 'right-2.5 bottom-1.5 px-1.5 py-0.5 rounded-full bg-black/40 backdrop-blur-sm text-white/90',
             )}
           >
+            {message.scheduledAt && !message.scheduledFiredAt && (
+              <Clock className="w-3 h-3 mr-0.5" />
+            )}
             {isPinned && <Pin className="w-3 h-3 mr-0.5" />}
             {message.editedAt && <span className="mr-0.5 italic opacity-80">ред.</span>}
-            <span>{formatTime(message.createdAt)}</span>
+            <span>
+              {message.scheduledAt && !message.scheduledFiredAt
+                ? formatScheduled(message.scheduledAt)
+                : formatTime(message.createdAt)}
+            </span>
             {isMe && (
               <span className="flex items-center -mr-0.5">
                 {status === 'sending' && <Clock className="w-3 h-3" />}
@@ -696,6 +773,110 @@ function replyPreviewText(reply: NonNullable<ChatMessage['replyTo']>) {
       </>
     );
   return <span className="truncate">{reply.content || '...'}</span>;
+}
+
+/**
+ * Inline contact card. Tap → opens (or creates) a direct chat with
+ * the shared user via POST /api/conversations.
+ */
+function ContactCardInline({
+  isMe,
+  userId,
+  username,
+  displayName,
+  avatarUrl,
+}: {
+  isMe: boolean;
+  userId: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}) {
+  async function open() {
+    if (!userId) return;
+    try {
+      const r = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ peerId: userId }),
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data?.id) window.location.href = `/chat/${data.id}`;
+    } catch {
+      /* ignore */
+    }
+  }
+  return (
+    <div className="min-w-[220px] max-w-[300px] pb-3">
+      <div
+        className={cn(
+          'flex items-center gap-3 rounded-xl px-3 py-2',
+          isMe ? 'bg-white/10' : 'bg-bg-elevated',
+        )}
+      >
+        <Avatar src={avatarUrl} name={username} size={40} />
+        <div className="flex-1 min-w-0">
+          <div
+            className={cn(
+              'text-[14px] font-medium truncate',
+              isMe ? 'text-white' : 'text-text',
+            )}
+          >
+            {displayName ?? username}
+          </div>
+          <div
+            className={cn(
+              'text-[12px] truncate',
+              isMe ? 'text-white/70' : 'text-text-muted',
+            )}
+          >
+            @{username}
+          </div>
+        </div>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          open();
+        }}
+        className={cn(
+          'mt-1.5 w-full rounded-lg py-1.5 text-[13px] font-medium transition-colors',
+          isMe
+            ? 'bg-white/20 hover:bg-white/30 text-white'
+            : 'bg-accent/15 hover:bg-accent/25 text-accent',
+        )}
+      >
+        написать
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Static map thumbnail. Uses the public OSM staticmap mirror — no API key
+ * required, returns a PNG ready for an <img>.
+ */
+function staticMapTile(lat: number, lng: number): string {
+  return (
+    `https://staticmap.openstreetmap.de/staticmap.php` +
+    `?center=${lat},${lng}&zoom=15&size=400x180&maptype=mapnik&markers=${lat},${lng},red-pushpin`
+  );
+}
+
+function formatScheduled(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (sameDay) return `${hh}:${mm}`;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}.${mo} ${hh}:${mm}`;
 }
 
 function formatBytes(n: number): string {

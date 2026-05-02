@@ -206,6 +206,8 @@ enum MessageType {
   FILE
   CALL
   POLL
+  LOCATION
+  CONTACT
 }
 
 enum CallType {
@@ -256,6 +258,10 @@ model Message {
   replyToId      String?
   pinnedAt       DateTime?
   pinnedById     String?
+  // Scheduled-send: messages with scheduledAt set are kept invisible until
+  // a server cron flips scheduledFiredAt and broadcasts them as new.
+  scheduledAt       DateTime?
+  scheduledFiredAt  DateTime?
   createdAt      DateTime    @default(now())
   editedAt       DateTime?
   deletedAt      DateTime?
@@ -271,6 +277,7 @@ model Message {
   @@index([conversationId, createdAt])
   @@index([replyToId])
   @@index([conversationId, pinnedAt])
+  @@index([scheduledAt, scheduledFiredAt])
 }
 
 /// Per-user emoji reactions on a message. Telegram-style — same user

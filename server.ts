@@ -5,6 +5,7 @@ import { Server as IOServer } from 'socket.io';
 import { getToken } from 'next-auth/jwt';
 import { prisma } from './src/lib/db';
 import { setIO } from './src/server/socket-bus';
+import { startScheduler } from './src/server/scheduler';
 
 const dev = process.env.NODE_ENV !== 'production';
 const port = Number(process.env.PORT ?? 3000);
@@ -168,6 +169,10 @@ void app.prepare().then(() => {
       }
     });
   });
+
+  // Kick off the scheduled-message poller. Free-tier sleep is fine — on
+  // wake-up the first tick releases everything that came due in the gap.
+  startScheduler();
 
   httpServer.listen(port, hostname, () => {
     console.log(`▶ ₮ubikz ready on http://${hostname}:${port}`);

@@ -317,6 +317,11 @@ function preview(
   if (m.type === 'VOICE') return prefix + '🎙 голосовое';
   if (m.type === 'CALL') return '📞 звонок';
   if (m.type === 'POLL') return prefix + '📊 ' + (m.content ?? 'опрос');
+  if (m.type === 'LOCATION') return prefix + '📍 локация';
+  if (m.type === 'CONTACT') {
+    const username = (m.content ?? '').split('|')[1] ?? '';
+    return prefix + '👤 ' + (username || 'контакт');
+  }
   return prefix + '📎 файл';
 }
 
