@@ -55,6 +55,7 @@ export function MessageBubble({
   const [menuOpensUp, setMenuOpensUp] = useState(false);
   const [bursts, setBursts] = useState<Burst[]>([]);
   const bubbleRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const longPressFiredRef = useRef(false);
   const isDeleted = !!message.deletedAt;
@@ -120,15 +121,24 @@ export function MessageBubble({
     }
   }
 
-  // Outside click closes the action menu.
+  // Outside click closes the action menu. We have to inspect the event
+  // target instead of relying on React's stopPropagation, because React's
+  // synthetic stopPropagation doesn't stop native listeners attached to
+  // `document` — they still fire after the bubble phase finishes. The
+  // result was the menu closing on mousedown before the click event on
+  // the actual menu item could fire (especially on desktop).
   useEffect(() => {
     if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    document.addEventListener('mousedown', close);
-    document.addEventListener('touchstart', close);
+    const onPointer = (e: MouseEvent | TouchEvent) => {
+      const node = menuRef.current;
+      if (node && node.contains(e.target as Node)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('touchstart', onPointer);
     return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('touchstart', close);
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('touchstart', onPointer);
     };
   }, [menuOpen]);
 
@@ -377,12 +387,11 @@ export function MessageBubble({
         <AnimatePresence>
           {menuOpen && (
             <motion.div
+              ref={menuRef}
               initial={{ opacity: 0, y: 6, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.95 }}
               transition={{ duration: 0.12 }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onTouchStart={(e) => e.stopPropagation()}
               className={cn(
                 'absolute z-30 flex flex-col gap-1 bg-bg-panel border border-border rounded-2xl p-1.5 shadow-2xl min-w-[180px]',
                 isMe ? 'right-0' : 'left-0',
