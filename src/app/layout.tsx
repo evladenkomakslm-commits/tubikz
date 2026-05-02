@@ -33,6 +33,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
+  // When the soft keyboard opens, resize the layout viewport itself instead
+  // of scrolling the page. Without this, iOS leaves a black gap between the
+  // composer and the keyboard. Supported on iOS 16.4+ and modern Chromium.
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
