@@ -316,6 +316,7 @@ function preview(
   if (m.type === 'VIDEO') return prefix + '🎬 видео';
   if (m.type === 'VOICE') return prefix + '🎙 голосовое';
   if (m.type === 'CALL') return '📞 звонок';
+  if (m.type === 'POLL') return prefix + '📊 ' + (m.content ?? 'опрос');
   return prefix + '📎 файл';
 }
 

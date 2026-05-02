@@ -1,5 +1,17 @@
-import type { Message, MessageReaction, User } from '@prisma/client';
-import type { ChatMessage, ReactionSummary, ReplyPreview } from '@/types';
+import type {
+  Message,
+  MessageReaction,
+  Poll,
+  PollOption,
+  PollVote,
+  User,
+} from '@prisma/client';
+import type {
+  ChatMessage,
+  PollView,
+  ReactionSummary,
+  ReplyPreview,
+} from '@/types';
 
 type ReplyShape =
   | (Pick<Message, 'id' | 'senderId' | 'type' | 'content' | 'mediaUrl' | 'deletedAt'> & {
@@ -9,12 +21,40 @@ type ReplyShape =
 
 type ReadShape = { userId: string };
 type ReactionShape = Pick<MessageReaction, 'emoji' | 'userId'>;
+type PollShape =
+  | (Poll & {
+      options: (PollOption & { votes: PollVote[] })[];
+      votes: PollVote[];
+    })
+  | null;
 
 export type MessageWithRelations = Message & {
   reads?: ReadShape[];
   reactions?: ReactionShape[];
   replyTo?: ReplyShape;
+  poll?: PollShape;
 };
+
+/** Project a Poll row + its options/votes into the lean shape the client uses. */
+export function toPollView(poll: NonNullable<PollShape>, currentUserId: string): PollView {
+  return {
+    id: poll.id,
+    question: poll.question,
+    multipleChoice: poll.multipleChoice,
+    anonymous: poll.anonymous,
+    closedAt: poll.closedAt ? poll.closedAt.toISOString() : null,
+    totalVotes: poll.votes.length,
+    options: poll.options
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((o) => ({
+        id: o.id,
+        text: o.text,
+        votes: o.votes.length,
+        mine: o.votes.some((v) => v.userId === currentUserId),
+      })),
+  };
+}
 
 /** Roll up `MessageReaction` rows into one entry per emoji. */
 export function aggregateReactions(
@@ -78,6 +118,7 @@ export function toChatMessage(
     pinnedAt: m.pinnedAt ? m.pinnedAt.toISOString() : null,
     pinnedById: m.pinnedById,
     readBy: m.reads?.map((r) => r.userId) ?? [],
+    poll: m.poll ? toPollView(m.poll, currentUserId) : null,
   };
 }
 
@@ -94,6 +135,12 @@ export const messageInclude = {
       mediaUrl: true,
       deletedAt: true,
       sender: { select: { username: true, displayName: true } },
+    },
+  },
+  poll: {
+    include: {
+      options: { include: { votes: true } },
+      votes: true,
     },
   },
 } as const;

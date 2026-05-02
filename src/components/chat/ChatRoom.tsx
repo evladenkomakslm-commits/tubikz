@@ -25,7 +25,7 @@ import { GroupInfoSheet } from './GroupInfoSheet';
 import { ImageViewer, type GalleryImage } from './ImageViewer';
 import { CallButton } from '@/components/calls/CallButton';
 import { compressImage } from '@/lib/image-compress';
-import type { ChatMessage, ReactionSummary } from '@/types';
+import type { ChatMessage, PollView, ReactionSummary } from '@/types';
 import { formatTime } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 
@@ -51,6 +51,7 @@ function previewOf(m: ChatMessage): string {
   if (m.type === 'VIDEO') return 'видео';
   if (m.type === 'VOICE') return 'голосовое';
   if (m.type === 'CALL') return 'звонок';
+  if (m.type === 'POLL') return `📊 ${m.poll?.question ?? m.content ?? 'опрос'}`;
   if (m.type === 'FILE') {
     // FILE bubble stashes "filename|size" in content; show only the name.
     return (m.content ?? '').split('|')[0] || 'файл';
@@ -360,6 +361,28 @@ export function ChatRoom({
       }
     };
 
+    const onPollVoted = (payload: {
+      conversationId: string;
+      messageId: string;
+      poll: Omit<PollView, 'options'> & {
+        options: Array<Omit<PollView['options'][number], 'mine'>>;
+      };
+      voters: Record<string, string[]>;
+    }) => {
+      if (payload.conversationId !== conversationId) return;
+      // Localize: pick `mine` from the voter map for our user id.
+      const localized: PollView = {
+        ...payload.poll,
+        options: payload.poll.options.map((o) => ({
+          ...o,
+          mine: (payload.voters[o.id] ?? []).includes(currentUserId),
+        })),
+      };
+      setMessages((prev) =>
+        prev.map((m) => (m.id === payload.messageId ? { ...m, poll: localized } : m)),
+      );
+    };
+
     const onMembers = (payload: { conversationId: string }) => {
       if (payload.conversationId !== conversationId) return;
       // Member roster changed (added / kicked / role flip / leave). Just
@@ -398,6 +421,7 @@ export function ChatRoom({
     socket.on('members:changed', onMembers);
     socket.on('group:updated', onGroupUpdated);
     socket.on('group:deleted', onGroupDeleted);
+    socket.on('poll:voted', onPollVoted);
     socket.on('typing', onTyping);
     socket.on('presence', onPresence);
     return () => {
@@ -410,6 +434,7 @@ export function ChatRoom({
       socket.off('members:changed', onMembers);
       socket.off('group:updated', onGroupUpdated);
       socket.off('group:deleted', onGroupDeleted);
+      socket.off('poll:voted', onPollVoted);
       socket.off('typing', onTyping);
       socket.off('presence', onPresence);
     };
@@ -704,6 +729,63 @@ export function ChatRoom({
     return out;
   }, [messages, members, peer, currentUserId]);
 
+  /**
+   * Optimistic poll vote. We update the local poll snapshot first so the
+   * UI is instantly responsive, then call the server. The server's
+   * authoritative response replaces our local view, and a 'poll:voted'
+   * broadcast keeps everyone else in sync.
+   */
+  async function handleVote(messageId: string, optionIds: string[]) {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId || !m.poll) return m;
+        const wantSet = new Set(optionIds);
+        const wasMine = m.poll.options.some((o) => o.mine);
+        // Recompute counts: remove my old votes, add new ones.
+        const updatedOptions = m.poll.options.map((o) => {
+          const willBeMine = wantSet.has(o.id);
+          const delta = (willBeMine ? 1 : 0) - (o.mine ? 1 : 0);
+          return { ...o, mine: willBeMine, votes: o.votes + delta };
+        });
+        const myVoteDelta =
+          (optionIds.length > 0 ? 1 : 0) - (wasMine ? 1 : 0);
+        // For multi-choice the per-option deltas don't sum to 1; total is
+        // really how many people voted. So we recount total based on
+        // distinct user counts — but for this optimistic step, just track
+        // whether *I* count toward total or not.
+        const total = m.poll.totalVotes + myVoteDelta;
+        return {
+          ...m,
+          poll: {
+            ...m.poll,
+            options: updatedOptions,
+            totalVotes: Math.max(0, total),
+          },
+        };
+      }),
+    );
+
+    const res = await fetch(
+      `/api/conversations/${conversationId}/messages/${messageId}/vote`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optionIds }),
+      },
+    );
+    if (!res.ok) {
+      toast.push({ message: 'не удалось проголосовать', kind: 'error' });
+      reload();
+      return;
+    }
+    const data = (await res.json()) as { poll: PollView };
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId && m.poll ? { ...m, poll: data.poll } : m,
+      ),
+    );
+  }
+
   function openImage(messageId: string) {
     const i = gallery.findIndex((g) => g.id === messageId);
     if (i === -1) return;
@@ -988,6 +1070,7 @@ export function ChatRoom({
         onTogglePin={handleTogglePin}
         onJumpTo={handleJumpTo}
         onOpenImage={openImage}
+        onVote={handleVote}
       />
       {!isSaved && peerTyping && <TypingIndicator />}
 

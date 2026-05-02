@@ -26,6 +26,7 @@ import { haptic } from '@/lib/haptics';
 import { RichText } from '@/lib/markdown';
 import { Avatar } from '@/components/ui/Avatar';
 import { VoiceBubble } from './VoiceBubble';
+import { PollBubble } from './PollBubble';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'] as const;
 
@@ -45,6 +46,7 @@ export function MessageBubble({
   onTogglePin,
   onJumpTo,
   onOpenImage,
+  onVote,
 }: {
   message: ChatMessage;
   isMe: boolean;
@@ -58,6 +60,7 @@ export function MessageBubble({
   onTogglePin: () => void;
   onJumpTo: (messageId: string) => void;
   onOpenImage?: () => void;
+  onVote?: (optionIds: string[]) => Promise<void>;
 }) {
   const status = inferStatus(message, isMe);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -180,6 +183,9 @@ export function MessageBubble({
   }
 
   const isText = message.type === 'TEXT';
+  const isPoll = message.type === 'POLL';
+  // Both TEXT and POLL render with text-style padding (not media-style p-1).
+  const usesTextLayout = isText || isPoll;
   const hasReactions = (message.reactions?.length ?? 0) > 0;
   const isPinned = !!message.pinnedAt;
 
@@ -254,12 +260,12 @@ export function MessageBubble({
               ? 'bg-accent text-white'
               : 'bg-bg-panel/95 border border-border/60 backdrop-blur-sm',
             !grouped && (isMe ? 'rounded-br-md' : 'rounded-bl-md'),
-            isText ? 'pl-3 pr-3 py-1.5' : 'p-1',
+            usesTextLayout ? 'pl-3 pr-3 py-1.5' : 'p-1',
           )}
         >
           {/* Sender name — group chats, incoming messages, only at the
               start of a same-sender run. */}
-          {showSender && !isMe && isText && (
+          {showSender && !isMe && usesTextLayout && (
             <div className="text-[12.5px] font-semibold text-accent pb-0.5">
               {sender?.displayName ?? sender?.username ?? '...'}
             </div>
@@ -396,6 +402,16 @@ export function MessageBubble({
             />
           )}
 
+          {isPoll && message.poll && (
+            <div className="pb-3">
+              <PollBubble
+                poll={message.poll}
+                isMe={isMe}
+                onVote={onVote ?? (async () => {})}
+              />
+            </div>
+          )}
+
           {message.type === 'FILE' && message.mediaUrl && (() => {
             // We stash "filename|sizeBytes" in `content` at upload time so
             // the bubble can render a proper file card without needing
@@ -456,7 +472,7 @@ export function MessageBubble({
             className={cn(
               'absolute right-2 bottom-1 flex items-center gap-0.5 text-[10px] leading-none select-none',
               isMe ? 'text-white/75' : 'text-text-subtle',
-              !isText &&
+              !usesTextLayout &&
                 'right-2.5 bottom-1.5 px-1.5 py-0.5 rounded-full bg-black/40 backdrop-blur-sm text-white/90',
             )}
           >

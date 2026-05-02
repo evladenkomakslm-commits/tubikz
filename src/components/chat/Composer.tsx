@@ -11,6 +11,7 @@ import {
   File as FileIcon,
   Reply as ReplyIcon,
   Pencil,
+  BarChart3,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/components/ui/Toast';
@@ -19,6 +20,7 @@ import { useSession } from 'next-auth/react';
 import { cn } from '@/lib/utils';
 import { loadDraft, saveDraft, clearDraft } from '@/lib/drafts';
 import { compressImage } from '@/lib/image-compress';
+import { PollDialog } from './PollDialog';
 import type { ChatMessage } from '@/types';
 
 type SendInput = {
@@ -78,6 +80,7 @@ export function Composer({
   const fileAnyRef = useRef<HTMLInputElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [attachOpen, setAttachOpen] = useState(false);
+  const [pollOpen, setPollOpen] = useState(false);
   const attachRef = useRef<HTMLDivElement>(null);
 
   // Hydrate the draft when the conversation changes. Cleared by send.
@@ -494,6 +497,16 @@ export function Composer({
                         <FileIcon className="w-4 h-4 text-text-muted" />
                         файл
                       </button>
+                      <button
+                        onClick={() => {
+                          setAttachOpen(false);
+                          setPollOpen(true);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-bg-hover text-left text-sm"
+                      >
+                        <BarChart3 className="w-4 h-4 text-fuchsia-400" />
+                        опрос
+                      </button>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -558,6 +571,26 @@ export function Composer({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <PollDialog
+        open={pollOpen}
+        onClose={() => setPollOpen(false)}
+        onCreate={async (input) => {
+          const res = await fetch(
+            `/api/conversations/${conversationId}/messages/poll`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(input),
+            },
+          );
+          if (!res.ok) {
+            toast.push({ message: 'не удалось создать опрос', kind: 'error' });
+            return false;
+          }
+          return true;
+        }}
+      />
     </div>
   );
 }

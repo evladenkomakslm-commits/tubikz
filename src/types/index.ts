@@ -14,7 +14,7 @@ export interface ReplyPreview {
   id: string;
   senderId: string;
   senderName: string;
-  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL';
+  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL' | 'POLL';
   content?: string | null;
   mediaUrl?: string | null;
   deleted?: boolean;
@@ -39,11 +39,29 @@ export interface ReactionSummary {
   mine: boolean;
 }
 
+export interface PollOptionView {
+  id: string;
+  text: string;
+  votes: number;
+  /** True if the current user has voted for this option. */
+  mine: boolean;
+}
+
+export interface PollView {
+  id: string;
+  question: string;
+  multipleChoice: boolean;
+  anonymous: boolean;
+  closedAt: string | null;
+  totalVotes: number;
+  options: PollOptionView[];
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
   senderId: string;
-  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL';
+  type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'VOICE' | 'FILE' | 'CALL' | 'POLL';
   content?: string | null;
   mediaUrl?: string | null;
   mediaMimeType?: string | null;
@@ -58,6 +76,7 @@ export interface ChatMessage {
   pinnedAt?: string | null;
   pinnedById?: string | null;
   linkPreviews?: LinkPreview[];
+  poll?: PollView | null;
   status?: MessageStatus;
   readBy?: string[];
 }
@@ -88,6 +107,12 @@ export type SocketEvent =
       messageId: string;
       pinnedAt: string | null;
       pinnedById: string | null;
+    }
+  | {
+      type: 'poll:voted';
+      conversationId: string;
+      messageId: string;
+      poll: PollView;
     }
   | { type: 'message:read'; conversationId: string; userId: string; messageIds: string[] }
   | { type: 'typing'; conversationId: string; userId: string; isTyping: boolean }

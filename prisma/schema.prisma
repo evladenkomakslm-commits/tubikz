@@ -45,6 +45,7 @@ model User {
   totp             TotpSecret?
   sessions         ActiveSession[]
   pushSubs         PushSubscription[]
+  pollVotes        PollVote[]
 
   @@index([username])
   @@index([email])
@@ -204,6 +205,7 @@ enum MessageType {
   VOICE
   FILE
   CALL
+  POLL
 }
 
 enum CallType {
@@ -264,6 +266,7 @@ model Message {
   reactions    MessageReaction[]
   replyTo      Message?           @relation("MessageReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies      Message[]          @relation("MessageReply")
+  poll         Poll?
 
   @@index([conversationId, createdAt])
   @@index([replyToId])
@@ -284,6 +287,52 @@ model MessageReaction {
 
   @@unique([messageId, userId, emoji])
   @@index([messageId])
+}
+
+/// Poll attached to a Message of type POLL. One Poll per Message.
+model Poll {
+  id             String   @id @default(cuid())
+  messageId      String   @unique
+  question       String
+  multipleChoice Boolean  @default(false)
+  anonymous      Boolean  @default(false)
+  closedAt       DateTime?
+  createdAt      DateTime @default(now())
+
+  message Message      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  options PollOption[]
+  votes   PollVote[]
+
+  @@index([messageId])
+}
+
+model PollOption {
+  id       String @id @default(cuid())
+  pollId   String
+  text     String
+  position Int
+
+  poll  Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  votes PollVote[]
+
+  @@index([pollId])
+}
+
+model PollVote {
+  id        String   @id @default(cuid())
+  pollId    String
+  optionId  String
+  userId    String
+  votedAt   DateTime @default(now())
+
+  poll   Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // A user can vote for the same option only once. For single-choice
+  // polls the API also enforces "one option per poll per user".
+  @@unique([optionId, userId])
+  @@index([pollId, userId])
 }
 
 /// Cache for fetched OG / Twitter card metadata. We dedup on URL so
