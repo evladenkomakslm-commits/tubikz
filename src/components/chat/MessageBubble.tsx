@@ -47,11 +47,27 @@ export function MessageBubble({
 }) {
   const status = inferStatus(message, isMe);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpensUp, setMenuOpensUp] = useState(false);
   const [bursts, setBursts] = useState<Burst[]>([]);
+  const bubbleRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
   const longPressFiredRef = useRef(false);
   const isDeleted = !!message.deletedAt;
   const toast = useToast();
+
+  /**
+   * When the action menu opens, decide whether to drop it below or float
+   * it above the bubble based on available space. Last few messages of a
+   * chat would otherwise hide the menu behind the composer.
+   */
+  useEffect(() => {
+    if (!menuOpen || !bubbleRef.current) return;
+    const rect = bubbleRef.current.getBoundingClientRect();
+    // Menu height: ~250px (quick-emoji row + 3-4 items + padding).
+    const MENU_H = 260;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    setMenuOpensUp(spaceBelow < MENU_H);
+  }, [menuOpen]);
 
   /**
    * Reaction tap — both from the long-press strip and from the chip below
@@ -173,6 +189,7 @@ export function MessageBubble({
       {/* Wrapper holds the bubble + reactions row + floating action menu. */}
       <div className={cn('relative max-w-[78%] sm:max-w-[65%]', isMe ? 'items-end' : 'items-start')}>
         <div
+          ref={bubbleRef}
           onContextMenu={(e) => {
             // Block the native long-press menu (iOS "Copy / Look Up").
             e.preventDefault();
@@ -362,7 +379,9 @@ export function MessageBubble({
               className={cn(
                 'absolute z-30 flex flex-col gap-1 bg-bg-panel border border-border rounded-2xl p-1.5 shadow-2xl min-w-[180px]',
                 isMe ? 'right-0' : 'left-0',
-                'top-full mt-1.5',
+                // Flip above the bubble when there's no space below
+                // (otherwise the menu hides behind the composer).
+                menuOpensUp ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
               )}
             >
               {/* Quick reactions row */}
