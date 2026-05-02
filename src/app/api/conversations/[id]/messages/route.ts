@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { messageSchema } from '@/lib/validators';
 import { emitToConversation } from '@/server/socket-bus';
 import { messageInclude, toChatMessage } from '@/lib/messages';
+import { pushToUser } from '@/lib/push';
 
 async function assertParticipant(userId: string, conversationId: string) {
   const part = await prisma.participant.findUnique({
@@ -103,6 +104,49 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const payload = toChatMessage(created, session.user.id);
   emitToConversation(params.id, 'message:new', { message: payload });
+
+  // Fan out web-push to every other participant whose chat isn't muted.
+  // Fire-and-forget — don't block the response on push delivery.
+  void (async () => {
+    try {
+      const others = await prisma.participant.findMany({
+        where: {
+          conversationId: params.id,
+          userId: { not: session.user.id },
+          OR: [{ mutedUntil: null }, { mutedUntil: { lt: new Date() } }],
+        },
+        select: { userId: true },
+      });
+      const sender = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { username: true, displayName: true },
+      });
+      const senderName =
+        sender?.displayName ?? sender?.username ?? 'кто-то';
+      const body =
+        type === 'TEXT'
+          ? content?.slice(0, 140) ?? ''
+          : type === 'IMAGE'
+            ? '📷 фото'
+            : type === 'VIDEO'
+              ? '🎬 видео'
+              : type === 'VOICE'
+                ? '🎙 голосовое'
+                : '📎 файл';
+      await Promise.all(
+        others.map((p) =>
+          pushToUser(p.userId, {
+            title: senderName,
+            body,
+            url: `/chat/${params.id}`,
+            tag: `conv-${params.id}`,
+          }),
+        ),
+      );
+    } catch {
+      // Push is best-effort; silence failures.
+    }
+  })();
 
   return NextResponse.json({ message: payload });
 }

@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}";
+self.__REACT_LOADABLE_MANIFEST='{"components/profile/ProfilePanel.tsx -> @/lib/push-client":{"id":2773,"files":["static/chunks/773.741eb091044a71d8.js"]},"components/profile/ProfilePanel.tsx -> @/lib/sounds":{"id":3297,"files":["static/chunks/297.e03fd0203c74f20e.js"]}}';

@@ -44,6 +44,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       type: conversation.type,
       title: conversation.title,
       peer,
+      mutedUntil: part.mutedUntil ? part.mutedUntil.toISOString() : null,
+      archivedAt: part.archivedAt ? part.archivedAt.toISOString() : null,
     },
   });
 }

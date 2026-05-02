@@ -44,9 +44,28 @@ model User {
   inviteUsed       InviteCode?    @relation("InviteUsedBy")
   totp             TotpSecret?
   sessions         ActiveSession[]
+  pushSubs         PushSubscription[]
 
   @@index([username])
   @@index([email])
+}
+
+/// Web Push (VAPID) subscription, one row per device/browser the user
+/// has consented to receive notifications on. We send push to every
+/// active subscription except the sender's own.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  authKey   String
+  userAgent String?
+  createdAt DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// Pre-generated codes that gate registration. Admin generates → shares with friend → friend uses on /register.
@@ -149,11 +168,15 @@ model Conversation {
 }
 
 model Participant {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   userId         String
   conversationId String
-  joinedAt       DateTime @default(now())
-  lastReadAt     DateTime @default(now())
+  joinedAt       DateTime  @default(now())
+  lastReadAt     DateTime  @default(now())
+  // null = not muted; future date = muted until then; epoch-far = "forever"
+  mutedUntil     DateTime?
+  // null = visible in main list; set = stashed into archive
+  archivedAt     DateTime?
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

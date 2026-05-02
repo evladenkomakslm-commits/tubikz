@@ -1,6 +1,17 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bookmark, Loader2, Pin, X } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowLeft,
+  Bell,
+  BellOff,
+  Bookmark,
+  Loader2,
+  MoreVertical,
+  Pin,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
 import { Avatar } from '@/components/ui/Avatar';
 import { useSocket } from '@/hooks/useSocket';
@@ -52,6 +63,10 @@ export function ChatRoom({
   const [peerTyping, setPeerTyping] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [mutedUntil, setMutedUntil] = useState<string | null>(null);
+  const [archivedAt, setArchivedAt] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const headerMenuRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const socket = useSocket();
   const toast = useToast();
@@ -68,6 +83,8 @@ export function ChatRoom({
     const msgs = await msgsRes.json();
     setPeer(conv.conversation?.peer ?? null);
     setConvType(conv.conversation?.type ?? 'DIRECT');
+    setMutedUntil(conv.conversation?.mutedUntil ?? null);
+    setArchivedAt(conv.conversation?.archivedAt ?? null);
     setMessages(msgs.messages ?? []);
     setLoading(false);
     fetch(`/api/conversations/${conversationId}/read`, { method: 'POST' }).catch(() => {});
@@ -78,6 +95,61 @@ export function ChatRoom({
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // Close header menu on outside click.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointer = (e: MouseEvent | TouchEvent) => {
+      const node = headerMenuRef.current;
+      if (node && node.contains(e.target as Node)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('touchstart', onPointer);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('touchstart', onPointer);
+    };
+  }, [menuOpen]);
+
+  const isMuted =
+    !!mutedUntil && new Date(mutedUntil).getTime() > Date.now();
+  const isArchived = !!archivedAt;
+
+  async function setMute(duration: 1 | 8 | 24 | 'forever' | null) {
+    const res = await fetch(`/api/conversations/${conversationId}/mute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration }),
+    });
+    if (!res.ok) {
+      toast.push({ message: 'не удалось изменить', kind: 'error' });
+      return;
+    }
+    const data = await res.json();
+    setMutedUntil(data.mutedUntil ?? null);
+    toast.push({
+      message:
+        duration === null
+          ? 'звук включён'
+          : duration === 'forever'
+            ? 'отключено навсегда'
+            : `отключено на ${duration}ч`,
+    });
+  }
+
+  async function toggleArchive() {
+    const res = await fetch(`/api/conversations/${conversationId}/archive`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      toast.push({ message: 'не удалось изменить', kind: 'error' });
+      return;
+    }
+    const data = await res.json();
+    setArchivedAt(data.archivedAt ?? null);
+    toast.push({ message: data.archivedAt ? 'в архиве' : 'из архива' });
+  }
 
   useEffect(() => {
     if (!socket) return;
@@ -534,6 +606,79 @@ export function ChatRoom({
               }}
               conversationId={conversationId}
             />
+            <div className="relative" ref={headerMenuRef}>
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                className="p-2 -mr-1 rounded-full text-text-muted hover:bg-bg-hover transition-colors"
+                aria-label="меню чата"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-1.5 z-30 min-w-[200px] bg-bg-panel border border-border rounded-2xl p-1.5 shadow-2xl">
+                  {isMuted ? (
+                    <HMenuItem
+                      icon={<Bell className="w-4 h-4" />}
+                      label="включить звук"
+                      onClick={() => {
+                        setMute(null);
+                        setMenuOpen(false);
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <HMenuItem
+                        icon={<BellOff className="w-4 h-4" />}
+                        label="без звука 1ч"
+                        onClick={() => {
+                          setMute(1);
+                          setMenuOpen(false);
+                        }}
+                      />
+                      <HMenuItem
+                        icon={<BellOff className="w-4 h-4" />}
+                        label="без звука 8ч"
+                        onClick={() => {
+                          setMute(8);
+                          setMenuOpen(false);
+                        }}
+                      />
+                      <HMenuItem
+                        icon={<BellOff className="w-4 h-4" />}
+                        label="без звука 24ч"
+                        onClick={() => {
+                          setMute(24);
+                          setMenuOpen(false);
+                        }}
+                      />
+                      <HMenuItem
+                        icon={<BellOff className="w-4 h-4" />}
+                        label="навсегда"
+                        onClick={() => {
+                          setMute('forever');
+                          setMenuOpen(false);
+                        }}
+                      />
+                    </>
+                  )}
+                  <div className="h-px bg-border my-1" />
+                  <HMenuItem
+                    icon={
+                      isArchived ? (
+                        <ArchiveRestore className="w-4 h-4" />
+                      ) : (
+                        <Archive className="w-4 h-4" />
+                      )
+                    }
+                    label={isArchived ? 'из архива' : 'в архив'}
+                    onClick={() => {
+                      toggleArchive();
+                      setMenuOpen(false);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
           </>
         ) : null}
       </header>
@@ -597,5 +742,25 @@ export function ChatRoom({
         onSubmitEdit={handleEditSubmit}
       />
     </div>
+  );
+}
+
+function HMenuItem({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left text-sm hover:bg-bg-hover transition-colors"
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
   );
 }

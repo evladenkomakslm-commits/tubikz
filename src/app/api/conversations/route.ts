@@ -67,6 +67,8 @@ export async function GET() {
         lastMessage: last,
         unreadCount,
         updatedAt: p.conversation.updatedAt,
+        mutedUntil: p.mutedUntil ? p.mutedUntil.toISOString() : null,
+        archivedAt: p.archivedAt ? p.archivedAt.toISOString() : null,
       };
     }),
   );

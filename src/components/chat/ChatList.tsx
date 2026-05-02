@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bookmark, MessageSquarePlus } from 'lucide-react';
+import { Archive, BellOff, Bookmark, MessageSquarePlus } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { useSocket } from '@/hooks/useSocket';
 import { useToast } from '@/components/ui/Toast';
 import { cn, formatDay } from '@/lib/utils';
 import { loadAllDrafts } from '@/lib/drafts';
+import { loadSoundPref, playIncoming } from '@/lib/sounds';
 
 interface ConvSummary {
   id: string;
@@ -31,6 +32,8 @@ interface ConvSummary {
   } | null;
   unreadCount: number;
   updatedAt: string;
+  mutedUntil: string | null;
+  archivedAt: string | null;
 }
 
 export function ChatList() {
@@ -39,6 +42,7 @@ export function ChatList() {
   const meId = session?.user?.id;
   const [conversations, setConversations] = useState<ConvSummary[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [showArchive, setShowArchive] = useState(false);
   const socket = useSocket();
   const toast = useToast();
 
@@ -50,6 +54,8 @@ export function ChatList() {
 
   useEffect(() => {
     load();
+    // Restore sound preference (sound on by default).
+    loadSoundPref();
   }, []);
 
   // Refresh drafts whenever conv list changes or user navigates between chats.
@@ -114,7 +120,19 @@ export function ChatList() {
       // Don't toast for our own messages or for the chat we're already viewing.
       if (isOwn) return;
       const conv = conversationsRef.current.find((c) => c.id === m.conversationId);
-      if (params?.id !== m.conversationId && conv?.peer && document.visibilityState !== 'visible') {
+      const isMuted = conv?.mutedUntil
+        ? new Date(conv.mutedUntil).getTime() > Date.now()
+        : false;
+      // Sound + in-app toast — both honor mute. Push is filtered server-side.
+      if (!isMuted && params?.id !== m.conversationId) {
+        playIncoming();
+      }
+      if (
+        !isMuted &&
+        params?.id !== m.conversationId &&
+        conv?.peer &&
+        document.visibilityState !== 'visible'
+      ) {
         toast.push({
           message: `${conv.peer.displayName ?? conv.peer.username}: ${preview(m)}`,
         });
@@ -163,99 +181,88 @@ export function ChatList() {
       {/* Sticky header with safe-area for iOS notch */}
       <header className="sticky top-0 z-10 bg-bg-panel/95 backdrop-blur border-b border-border px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)]">
         <div className="flex items-baseline justify-between">
-          <h1 className="text-[22px] font-semibold tracking-tight">чаты</h1>
+          <h1 className="text-[22px] font-semibold tracking-tight">
+            {showArchive ? 'архив' : 'чаты'}
+          </h1>
           {conversations.length > 0 && (
-            <span className="text-xs text-text-muted">{conversations.length}</span>
+            <span className="text-xs text-text-muted">
+              {showArchive
+                ? conversations.filter((c) => c.archivedAt).length
+                : conversations.filter((c) => !c.archivedAt).length}
+            </span>
           )}
         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto scroll-smooth-y overscroll-contain">
-        {conversations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
-              <MessageSquarePlus className="w-7 h-7 text-text-muted" />
-            </div>
-            <p className="text-sm text-text-muted">
-              пока никого. найди тюбика во вкладке «друзья»
-            </p>
-          </div>
-        ) : (
-          <AnimatePresence initial={false}>
-            {conversations.map((c) => {
-              const active = params?.id === c.id;
-              const isSaved = c.type === 'SAVED';
-              const name = isSaved
-                ? 'Избранное'
-                : (c.peer?.displayName ?? c.peer?.username ?? c.title ?? 'чат');
-              return (
-                <motion.div
-                  key={c.id}
-                  layout
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <Link
-                    href={`/chat/${c.id}`}
-                    className={cn(
-                      'flex items-center gap-3 px-4 py-3 transition-colors active:bg-bg-hover/80',
-                      active
-                        ? 'bg-accent-soft md:bg-accent-soft'
-                        : 'hover:bg-bg-hover',
-                    )}
+        {(() => {
+          const filtered = conversations.filter((c) =>
+            showArchive ? c.archivedAt : !c.archivedAt,
+          );
+          const archivedCount = conversations.filter((c) => c.archivedAt).length;
+          if (filtered.length === 0) {
+            return (
+              <div className="flex flex-col items-center justify-center h-full px-8 text-center">
+                <div className="w-16 h-16 rounded-full bg-bg-elevated flex items-center justify-center mb-4">
+                  {showArchive ? (
+                    <Archive className="w-7 h-7 text-text-muted" />
+                  ) : (
+                    <MessageSquarePlus className="w-7 h-7 text-text-muted" />
+                  )}
+                </div>
+                <p className="text-sm text-text-muted">
+                  {showArchive
+                    ? 'в архиве пусто'
+                    : 'пока никого. найди тюбика во вкладке «друзья»'}
+                </p>
+                {showArchive && (
+                  <button
+                    onClick={() => setShowArchive(false)}
+                    className="mt-3 text-sm text-accent"
                   >
-                    {isSaved ? (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-md shadow-accent/30">
-                        <Bookmark className="w-5 h-5 text-white" fill="currentColor" />
-                      </div>
-                    ) : (
-                      <Avatar
-                        src={c.peer?.avatarUrl}
-                        name={c.peer?.username ?? 'tubik'}
-                        size={48}
-                        online={c.peer?.isOnline}
-                      />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <div className="font-semibold truncate text-[15px] text-text">{name}</div>
-                        {c.lastMessage && (
-                          <div className={cn(
-                            'text-[11px] shrink-0',
-                            c.unreadCount > 0 && !active ? 'text-accent font-medium' : 'text-text-subtle',
-                          )}>
-                            {formatDay(c.lastMessage.createdAt)}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <div className="text-[13px] text-text-muted truncate leading-snug">
-                          {drafts[c.id] ? (
-                            <>
-                              <span className="text-danger">черновик:</span>{' '}
-                              {drafts[c.id]}
-                            </>
-                          ) : c.lastMessage ? (
-                            preview(c.lastMessage, meId)
-                          ) : (
-                            'нет сообщений'
-                          )}
-                        </div>
-                        {c.unreadCount > 0 && !active && (
-                          <span className="bg-accent text-white text-[11px] font-semibold rounded-full px-1.5 min-w-[20px] h-5 flex items-center justify-center shrink-0">
-                            {c.unreadCount > 99 ? '99+' : c.unreadCount}
-                          </span>
-                        )}
-                      </div>
+                    к чатам
+                  </button>
+                )}
+              </div>
+            );
+          }
+          return (
+            <>
+              {/* Archive entry — shown only on the main list, not inside archive itself. */}
+              {!showArchive && archivedCount > 0 && (
+                <button
+                  onClick={() => setShowArchive(true)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-hover transition-colors text-left"
+                >
+                  <div className="w-12 h-12 rounded-full bg-bg-elevated flex items-center justify-center shrink-0">
+                    <Archive className="w-5 h-5 text-text-muted" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-[15px]">архив</div>
+                    <div className="text-[13px] text-text-muted">
+                      {archivedCount} чат
+                      {archivedCount === 1 ? '' : archivedCount < 5 ? 'а' : 'ов'}
                     </div>
-                  </Link>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        )}
+                  </div>
+                </button>
+              )}
+              {showArchive && (
+                <button
+                  onClick={() => setShowArchive(false)}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-accent hover:bg-bg-hover transition-colors"
+                >
+                  ← к чатам
+                </button>
+              )}
+              <ChatRows
+                items={filtered}
+                meId={meId ?? undefined}
+                drafts={drafts}
+                activeId={params?.id}
+              />
+            </>
+          );
+        })()}
       </div>
 
       {/* Floating action button — go to Friends to start a new chat. Mobile-only. */}
@@ -281,5 +288,113 @@ function preview(
   if (m.type === 'VOICE') return prefix + '🎙 голосовое';
   if (m.type === 'CALL') return '📞 звонок';
   return prefix + '📎 файл';
+}
+
+function ChatRows({
+  items,
+  meId,
+  drafts,
+  activeId,
+}: {
+  items: ConvSummary[];
+  meId?: string;
+  drafts: Record<string, string>;
+  activeId?: string;
+}) {
+  return (
+    <AnimatePresence initial={false}>
+      {items.map((c) => {
+        const active = activeId === c.id;
+        const isSaved = c.type === 'SAVED';
+        const name = isSaved
+          ? 'Избранное'
+          : (c.peer?.displayName ?? c.peer?.username ?? c.title ?? 'чат');
+        const isMuted = c.mutedUntil
+          ? new Date(c.mutedUntil).getTime() > Date.now()
+          : false;
+        return (
+          <motion.div
+            key={c.id}
+            layout
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Link
+              href={`/chat/${c.id}`}
+              className={cn(
+                'flex items-center gap-3 px-4 py-3 transition-colors active:bg-bg-hover/80',
+                active ? 'bg-accent-soft md:bg-accent-soft' : 'hover:bg-bg-hover',
+              )}
+            >
+              {isSaved ? (
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-md shadow-accent/30">
+                  <Bookmark className="w-5 h-5 text-white" fill="currentColor" />
+                </div>
+              ) : (
+                <Avatar
+                  src={c.peer?.avatarUrl}
+                  name={c.peer?.username ?? 'tubik'}
+                  size={48}
+                  online={c.peer?.isOnline}
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="font-semibold truncate text-[15px] text-text">
+                      {name}
+                    </div>
+                    {isMuted && (
+                      <BellOff className="w-3.5 h-3.5 text-text-subtle shrink-0" />
+                    )}
+                  </div>
+                  {c.lastMessage && (
+                    <div
+                      className={cn(
+                        'text-[11px] shrink-0',
+                        c.unreadCount > 0 && !active && !isMuted
+                          ? 'text-accent font-medium'
+                          : 'text-text-subtle',
+                      )}
+                    >
+                      {formatDay(c.lastMessage.createdAt)}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-0.5">
+                  <div className="text-[13px] text-text-muted truncate leading-snug">
+                    {drafts[c.id] ? (
+                      <>
+                        <span className="text-danger">черновик:</span>{' '}
+                        {drafts[c.id]}
+                      </>
+                    ) : c.lastMessage ? (
+                      preview(c.lastMessage, meId)
+                    ) : (
+                      'нет сообщений'
+                    )}
+                  </div>
+                  {c.unreadCount > 0 && !active && (
+                    <span
+                      className={cn(
+                        'text-[11px] font-semibold rounded-full px-1.5 min-w-[20px] h-5 flex items-center justify-center shrink-0',
+                        isMuted
+                          ? 'bg-text-muted/40 text-bg'
+                          : 'bg-accent text-white',
+                      )}
+                    >
+                      {c.unreadCount > 99 ? '99+' : c.unreadCount}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Link>
+          </motion.div>
+        );
+      })}
+    </AnimatePresence>
+  );
 }
 

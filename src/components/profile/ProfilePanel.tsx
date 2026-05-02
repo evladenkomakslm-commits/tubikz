@@ -11,6 +11,10 @@ import {
   Monitor,
   Smartphone,
   Trash2,
+  Bell,
+  BellOff,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { Avatar } from '@/components/ui/Avatar';
@@ -180,6 +184,7 @@ export function ProfilePanel() {
       {/* Security card — 2FA */}
       <TwoFactorCard />
       <SessionsCard />
+      <NotificationsCard />
       </div>
     </div>
   );
@@ -602,4 +607,118 @@ function parseUA(ua: string): { label: string } {
   }
   if (/Linux/.test(ua)) return { label: 'Linux' };
   return { label: ua.slice(0, 40) };
+}
+
+/* ─────────── Notifications card (push + sounds) ─────────── */
+function NotificationsCard() {
+  const [pushOn, setPushOn] = useState<'unknown' | 'on' | 'off' | 'denied'>('unknown');
+  const [soundsOn, setSoundsOn] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // Lazy import — browser-only.
+      const { pushSupported } = await import('@/lib/push-client');
+      const { loadSoundPref } = await import('@/lib/sounds');
+      if (cancelled) return;
+      setSoundsOn(!loadSoundPref());
+      if (!pushSupported()) {
+        setPushOn('off');
+        return;
+      }
+      if (Notification.permission === 'denied') {
+        setPushOn('denied');
+        return;
+      }
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = await reg?.pushManager.getSubscription();
+      setPushOn(sub ? 'on' : 'off');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function togglePush() {
+    setBusy(true);
+    const { subscribeToPush, unsubscribeFromPush } = await import('@/lib/push-client');
+    if (pushOn === 'on') {
+      await unsubscribeFromPush();
+      setPushOn('off');
+    } else {
+      const ok = await subscribeToPush();
+      setPushOn(ok ? 'on' : Notification.permission === 'denied' ? 'denied' : 'off');
+    }
+    setBusy(false);
+  }
+
+  async function toggleSounds() {
+    const { setSoundsMuted } = await import('@/lib/sounds');
+    const next = !soundsOn;
+    setSoundsOn(next);
+    setSoundsMuted(!next);
+  }
+
+  return (
+    <div className="bg-bg-panel border border-border rounded-2xl p-5">
+      <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+        уведомления
+      </h2>
+
+      {/* Push */}
+      <div className="flex items-center justify-between gap-3 py-2">
+        <div className="flex items-center gap-3 min-w-0">
+          {pushOn === 'on' ? (
+            <Bell className="w-5 h-5 text-accent" />
+          ) : (
+            <BellOff className="w-5 h-5 text-text-muted" />
+          )}
+          <div className="min-w-0">
+            <div className="text-[15px] font-medium">push-уведомления</div>
+            <div className="text-[12px] text-text-muted">
+              {pushOn === 'on'
+                ? 'включены — будут приходить даже когда вкладка закрыта'
+                : pushOn === 'denied'
+                  ? 'заблокированы в настройках браузера'
+                  : 'выключены'}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={togglePush}
+          disabled={busy || pushOn === 'denied'}
+          className={
+            pushOn === 'on'
+              ? 'tk-btn-ghost text-sm'
+              : 'tk-btn-primary text-sm'
+          }
+        >
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : pushOn === 'on' ? 'отключить' : 'включить'}
+        </button>
+      </div>
+
+      <div className="h-px bg-border my-1" />
+
+      {/* Sounds */}
+      <div className="flex items-center justify-between gap-3 py-2">
+        <div className="flex items-center gap-3 min-w-0">
+          {soundsOn ? (
+            <Volume2 className="w-5 h-5 text-accent" />
+          ) : (
+            <VolumeX className="w-5 h-5 text-text-muted" />
+          )}
+          <div className="min-w-0">
+            <div className="text-[15px] font-medium">звуки в чате</div>
+            <div className="text-[12px] text-text-muted">
+              лёгкий ping на новые сообщения
+            </div>
+          </div>
+        </div>
+        <button onClick={toggleSounds} className="tk-btn-ghost text-sm">
+          {soundsOn ? 'выключить' : 'включить'}
+        </button>
+      </div>
+    </div>
+  );
 }
