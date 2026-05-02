@@ -62,10 +62,17 @@ export function ChatRoom({
   const [convType, setConvType] = useState<'DIRECT' | 'GROUP' | 'SAVED'>('DIRECT');
   const [groupMeta, setGroupMeta] = useState<{
     title: string | null;
+    description: string | null;
     avatarUrl: string | null;
     memberCount: number | null;
     myRole: 'OWNER' | 'ADMIN' | 'MEMBER';
-  }>({ title: null, avatarUrl: null, memberCount: null, myRole: 'MEMBER' });
+  }>({
+    title: null,
+    description: null,
+    avatarUrl: null,
+    memberCount: null,
+    myRole: 'MEMBER',
+  });
   const [members, setMembers] = useState<
     Record<
       string,
@@ -100,6 +107,7 @@ export function ChatRoom({
     setConvType(conv.conversation?.type ?? 'DIRECT');
     setGroupMeta({
       title: conv.conversation?.title ?? null,
+      description: conv.conversation?.description ?? null,
       avatarUrl: conv.conversation?.avatarUrl ?? null,
       memberCount: conv.conversation?.memberCount ?? null,
       myRole: conv.conversation?.myRole ?? 'MEMBER',
@@ -313,6 +321,28 @@ export function ChatRoom({
       reload();
     };
 
+    const onGroupUpdated = (payload: {
+      conversationId: string;
+      title: string | null;
+      description: string | null;
+      avatarUrl: string | null;
+    }) => {
+      if (payload.conversationId !== conversationId) return;
+      setGroupMeta((prev) => ({
+        ...prev,
+        title: payload.title,
+        description: payload.description,
+        avatarUrl: payload.avatarUrl,
+      }));
+    };
+
+    const onGroupDeleted = (payload: { conversationId: string }) => {
+      if (payload.conversationId !== conversationId) return;
+      // Owner removed the group while we were inside it — bounce out.
+      toast.push({ message: 'группа удалена' });
+      window.location.href = '/chat';
+    };
+
     socket.on('message:new', onMessage);
     socket.on('message:edited', onEdited);
     socket.on('message:deleted', onDeleted);
@@ -320,6 +350,8 @@ export function ChatRoom({
     socket.on('message:pinned', onPinned);
     socket.on('message:read', onRead);
     socket.on('members:changed', onMembers);
+    socket.on('group:updated', onGroupUpdated);
+    socket.on('group:deleted', onGroupDeleted);
     socket.on('typing', onTyping);
     socket.on('presence', onPresence);
     return () => {
@@ -330,6 +362,8 @@ export function ChatRoom({
       socket.off('message:pinned', onPinned);
       socket.off('message:read', onRead);
       socket.off('members:changed', onMembers);
+      socket.off('group:updated', onGroupUpdated);
+      socket.off('group:deleted', onGroupDeleted);
       socket.off('typing', onTyping);
       socket.off('presence', onPresence);
     };
@@ -869,6 +903,7 @@ export function ChatRoom({
           onClose={() => setInfoOpen(false)}
           conversationId={conversationId}
           title={groupMeta.title ?? 'группа'}
+          description={groupMeta.description}
           avatarUrl={groupMeta.avatarUrl}
           myRole={groupMeta.myRole}
           meId={currentUserId}
