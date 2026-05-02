@@ -4,18 +4,22 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Archive, BellOff, Bookmark, MessageSquarePlus } from 'lucide-react';
+import { Archive, BellOff, Bookmark, MessageSquarePlus, Users } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
+import { GroupAvatar } from '@/components/ui/GroupAvatar';
 import { useSocket } from '@/hooks/useSocket';
 import { useToast } from '@/components/ui/Toast';
 import { cn, formatDay } from '@/lib/utils';
 import { loadAllDrafts } from '@/lib/drafts';
 import { loadSoundPref, playIncoming } from '@/lib/sounds';
+import { NewGroupDialog } from './NewGroupDialog';
 
 interface ConvSummary {
   id: string;
   type: 'DIRECT' | 'GROUP' | 'SAVED';
   title: string | null;
+  avatarUrl: string | null;
+  memberCount: number | null;
   peer: {
     id: string;
     username: string;
@@ -29,6 +33,7 @@ interface ConvSummary {
     type: string;
     content: string | null;
     createdAt: string;
+    senderName?: string | null;
   } | null;
   unreadCount: number;
   updatedAt: string;
@@ -43,6 +48,7 @@ export function ChatList() {
   const [conversations, setConversations] = useState<ConvSummary[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [showArchive, setShowArchive] = useState(false);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
   const socket = useSocket();
   const toast = useToast();
 
@@ -180,17 +186,29 @@ export function ChatList() {
     >
       {/* Sticky header with safe-area for iOS notch */}
       <header className="sticky top-0 z-10 bg-bg-panel/95 backdrop-blur border-b border-border px-4 py-3 pt-[max(env(safe-area-inset-top),0.75rem)]">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h1 className="text-[22px] font-semibold tracking-tight">
             {showArchive ? 'архив' : 'чаты'}
           </h1>
-          {conversations.length > 0 && (
-            <span className="text-xs text-text-muted">
-              {showArchive
-                ? conversations.filter((c) => c.archivedAt).length
-                : conversations.filter((c) => !c.archivedAt).length}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {!showArchive && (
+              <button
+                onClick={() => setNewGroupOpen(true)}
+                className="hidden md:inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full bg-bg-elevated hover:bg-bg-hover border border-border text-text-muted hover:text-text transition-colors"
+                title="новая группа"
+              >
+                <Users className="w-4 h-4" />
+                группа
+              </button>
+            )}
+            {conversations.length > 0 && (
+              <span className="text-xs text-text-muted">
+                {showArchive
+                  ? conversations.filter((c) => c.archivedAt).length
+                  : conversations.filter((c) => !c.archivedAt).length}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -265,14 +283,25 @@ export function ChatList() {
         })()}
       </div>
 
-      {/* Floating action button — go to Friends to start a new chat. Mobile-only. */}
-      <button
-        onClick={() => router.push('/friends')}
-        aria-label="новый чат"
-        className="md:hidden absolute right-4 bottom-4 w-14 h-14 rounded-full bg-accent text-white shadow-2xl shadow-accent/40 flex items-center justify-center active:scale-95 transition-transform"
-      >
-        <MessageSquarePlus className="w-6 h-6" />
-      </button>
+      {/* Mobile FAB cluster — small + group below the main +. */}
+      <div className="md:hidden absolute right-4 bottom-4 flex flex-col items-end gap-2">
+        <button
+          onClick={() => setNewGroupOpen(true)}
+          aria-label="новая группа"
+          className="w-12 h-12 rounded-full bg-bg-elevated text-text border border-border shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+        >
+          <Users className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => router.push('/friends')}
+          aria-label="новый чат"
+          className="w-14 h-14 rounded-full bg-accent text-white shadow-2xl shadow-accent/40 flex items-center justify-center active:scale-95 transition-transform"
+        >
+          <MessageSquarePlus className="w-6 h-6" />
+        </button>
+      </div>
+
+      <NewGroupDialog open={newGroupOpen} onClose={() => setNewGroupOpen(false)} />
     </aside>
   );
 }
@@ -306,9 +335,12 @@ function ChatRows({
       {items.map((c) => {
         const active = activeId === c.id;
         const isSaved = c.type === 'SAVED';
+        const isGroup = c.type === 'GROUP';
         const name = isSaved
           ? 'Избранное'
-          : (c.peer?.displayName ?? c.peer?.username ?? c.title ?? 'чат');
+          : isGroup
+            ? c.title ?? 'группа'
+            : (c.peer?.displayName ?? c.peer?.username ?? c.title ?? 'чат');
         const isMuted = c.mutedUntil
           ? new Date(c.mutedUntil).getTime() > Date.now()
           : false;
@@ -332,6 +364,8 @@ function ChatRows({
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-accent to-fuchsia-500 flex items-center justify-center shrink-0 shadow-md shadow-accent/30">
                   <Bookmark className="w-5 h-5 text-white" fill="currentColor" />
                 </div>
+              ) : isGroup ? (
+                <GroupAvatar src={c.avatarUrl} name={c.title ?? 'группа'} size={48} />
               ) : (
                 <Avatar
                   src={c.peer?.avatarUrl}
@@ -371,7 +405,16 @@ function ChatRows({
                         {drafts[c.id]}
                       </>
                     ) : c.lastMessage ? (
-                      preview(c.lastMessage, meId)
+                      isGroup && c.lastMessage.senderName && c.lastMessage.senderId !== meId ? (
+                        <>
+                          <span className="text-text">{c.lastMessage.senderName}:</span>{' '}
+                          {preview(c.lastMessage)}
+                        </>
+                      ) : (
+                        preview(c.lastMessage, meId)
+                      )
+                    ) : isGroup ? (
+                      `${c.memberCount ?? 1} участн${(c.memberCount ?? 1) === 1 ? 'ик' : (c.memberCount ?? 1) < 5 ? 'ика' : 'иков'}`
                     ) : (
                       'нет сообщений'
                     )}

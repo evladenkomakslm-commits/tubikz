@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { Avatar } from '@/components/ui/Avatar';
+import { GroupAvatar } from '@/components/ui/GroupAvatar';
 import { useSocket } from '@/hooks/useSocket';
 import { useToast } from '@/components/ui/Toast';
 import { MessageList } from './MessageList';
@@ -58,6 +59,18 @@ export function ChatRoom({
 }) {
   const [peer, setPeer] = useState<PeerInfo | null>(null);
   const [convType, setConvType] = useState<'DIRECT' | 'GROUP' | 'SAVED'>('DIRECT');
+  const [groupMeta, setGroupMeta] = useState<{
+    title: string | null;
+    avatarUrl: string | null;
+    memberCount: number | null;
+    myRole: 'OWNER' | 'ADMIN' | 'MEMBER';
+  }>({ title: null, avatarUrl: null, memberCount: null, myRole: 'MEMBER' });
+  const [members, setMembers] = useState<
+    Record<
+      string,
+      { username: string; displayName: string | null; avatarUrl: string | null }
+    >
+  >({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [peerTyping, setPeerTyping] = useState(false);
@@ -83,11 +96,40 @@ export function ChatRoom({
     const msgs = await msgsRes.json();
     setPeer(conv.conversation?.peer ?? null);
     setConvType(conv.conversation?.type ?? 'DIRECT');
+    setGroupMeta({
+      title: conv.conversation?.title ?? null,
+      avatarUrl: conv.conversation?.avatarUrl ?? null,
+      memberCount: conv.conversation?.memberCount ?? null,
+      myRole: conv.conversation?.myRole ?? 'MEMBER',
+    });
     setMutedUntil(conv.conversation?.mutedUntil ?? null);
     setArchivedAt(conv.conversation?.archivedAt ?? null);
     setMessages(msgs.messages ?? []);
     setLoading(false);
     fetch(`/api/conversations/${conversationId}/read`, { method: 'POST' }).catch(() => {});
+
+    // Pull the member roster for groups — used to attribute messages.
+    if (conv.conversation?.type === 'GROUP') {
+      fetch(`/api/conversations/${conversationId}/members`)
+        .then((r) => r.json())
+        .then((d) => {
+          const map: Record<
+            string,
+            { username: string; displayName: string | null; avatarUrl: string | null }
+          > = {};
+          for (const m of d.members ?? []) {
+            map[m.id] = {
+              username: m.username,
+              displayName: m.displayName,
+              avatarUrl: m.avatarUrl,
+            };
+          }
+          setMembers(map);
+        })
+        .catch(() => {});
+    } else {
+      setMembers({});
+    }
   }, [conversationId]);
 
   const isSaved = convType === 'SAVED';
@@ -115,6 +157,7 @@ export function ChatRoom({
   const isMuted =
     !!mutedUntil && new Date(mutedUntil).getTime() > Date.now();
   const isArchived = !!archivedAt;
+  const isGroup = convType === 'GROUP';
 
   async function setMute(duration: 1 | 8 | 24 | 'forever' | null) {
     const res = await fetch(`/api/conversations/${conversationId}/mute`, {
@@ -575,6 +618,66 @@ export function ChatRoom({
               <div className="text-[12px] text-text-muted">личные заметки</div>
             </div>
           </>
+        ) : isGroup ? (
+          <>
+            <GroupAvatar
+              src={groupMeta.avatarUrl}
+              name={groupMeta.title ?? 'группа'}
+              size={40}
+            />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold truncate text-[15px]">
+                {groupMeta.title ?? 'группа'}
+              </div>
+              <div className="text-[12px] text-text-muted truncate">
+                {peerTyping ? (
+                  <span className="text-accent">кто-то печатает…</span>
+                ) : (
+                  `${groupMeta.memberCount ?? 1} участн${(groupMeta.memberCount ?? 1) === 1 ? 'ик' : (groupMeta.memberCount ?? 1) < 5 ? 'ика' : 'иков'}`
+                )}
+              </div>
+            </div>
+            <div className="relative" ref={headerMenuRef}>
+              <button
+                onClick={() => setMenuOpen((v) => !v)}
+                className="p-2 -mr-1 rounded-full text-text-muted hover:bg-bg-hover transition-colors"
+                aria-label="меню чата"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-1.5 z-30 min-w-[200px] bg-bg-panel border border-border rounded-2xl p-1.5 shadow-2xl">
+                  {isMuted ? (
+                    <HMenuItem
+                      icon={<Bell className="w-4 h-4" />}
+                      label="включить звук"
+                      onClick={() => {
+                        setMute(null);
+                        setMenuOpen(false);
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <HMenuItem icon={<BellOff className="w-4 h-4" />} label="без звука 1ч"
+                        onClick={() => { setMute(1); setMenuOpen(false); }} />
+                      <HMenuItem icon={<BellOff className="w-4 h-4" />} label="без звука 8ч"
+                        onClick={() => { setMute(8); setMenuOpen(false); }} />
+                      <HMenuItem icon={<BellOff className="w-4 h-4" />} label="без звука 24ч"
+                        onClick={() => { setMute(24); setMenuOpen(false); }} />
+                      <HMenuItem icon={<BellOff className="w-4 h-4" />} label="навсегда"
+                        onClick={() => { setMute('forever'); setMenuOpen(false); }} />
+                    </>
+                  )}
+                  <div className="h-px bg-border my-1" />
+                  <HMenuItem
+                    icon={isArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
+                    label={isArchived ? 'из архива' : 'в архив'}
+                    onClick={() => { toggleArchive(); setMenuOpen(false); }}
+                  />
+                </div>
+              )}
+            </div>
+          </>
         ) : peer ? (
           <>
             <Avatar
@@ -722,6 +825,8 @@ export function ChatRoom({
       <MessageList
         messages={messages}
         currentUserId={currentUserId}
+        isGroup={isGroup}
+        members={members}
         onReply={handleReply}
         onEdit={handleEditStart}
         onDelete={handleDelete}

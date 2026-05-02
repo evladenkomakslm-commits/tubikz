@@ -22,6 +22,7 @@ import { cn, formatTime } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { haptic } from '@/lib/haptics';
 import { RichText } from '@/lib/markdown';
+import { Avatar } from '@/components/ui/Avatar';
 import { VoiceBubble } from './VoiceBubble';
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'] as const;
@@ -33,6 +34,8 @@ export function MessageBubble({
   message,
   isMe,
   grouped,
+  showSender,
+  sender,
   onReply,
   onEdit,
   onDelete,
@@ -43,6 +46,8 @@ export function MessageBubble({
   message: ChatMessage;
   isMe: boolean;
   grouped: boolean;
+  showSender?: boolean;
+  sender?: { username: string; displayName: string | null; avatarUrl: string | null };
   onReply: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -202,6 +207,23 @@ export function MessageBubble({
         grouped ? 'mt-0.5' : 'mt-1.5',
       )}
     >
+      {/* Sender avatar — only shown in groups, on the side of incoming
+          messages, and only for the *last* bubble in a same-sender run
+          (so a vertical chain of messages doesn't repeat avatars). */}
+      {showSender && !isMe && (
+        <div className="shrink-0 mr-1.5 self-end mb-0.5">
+          <Avatar
+            src={sender?.avatarUrl ?? null}
+            name={sender?.username ?? '?'}
+            size={28}
+          />
+        </div>
+      )}
+      {/* Same-sender continuation gets a spacer so bubbles stay aligned. */}
+      {!isMe && !showSender && grouped && (
+        <div className="shrink-0 mr-1.5 w-7" />
+      )}
+
       {/* Wrapper holds the bubble + reactions row + floating action menu. */}
       <div className={cn('relative max-w-[78%] sm:max-w-[65%]', isMe ? 'items-end' : 'items-start')}>
         <div
@@ -231,6 +253,14 @@ export function MessageBubble({
             isText ? 'pl-3 pr-3 py-1.5' : 'p-1',
           )}
         >
+          {/* Sender name — group chats, incoming messages, only at the
+              start of a same-sender run. */}
+          {showSender && !isMe && isText && (
+            <div className="text-[12.5px] font-semibold text-accent pb-0.5">
+              {sender?.displayName ?? sender?.username ?? '...'}
+            </div>
+          )}
+
           {/* Reply quote — sits inside the bubble at the top. */}
           {message.replyTo && (
             <button

@@ -8,6 +8,8 @@ import { formatDay } from '@/lib/utils';
 export function MessageList({
   messages,
   currentUserId,
+  isGroup = false,
+  members,
   onReply,
   onEdit,
   onDelete,
@@ -17,6 +19,11 @@ export function MessageList({
 }: {
   messages: ChatMessage[];
   currentUserId: string;
+  isGroup?: boolean;
+  members?: Record<
+    string,
+    { username: string; displayName: string | null; avatarUrl: string | null }
+  >;
   onReply: (m: ChatMessage) => void;
   onEdit: (m: ChatMessage) => void;
   onDelete: (m: ChatMessage) => void;
@@ -83,6 +90,8 @@ export function MessageList({
                   message={m}
                   isMe={m.senderId === currentUserId}
                   grouped={grouped}
+                  showSender={isGroup && m.senderId !== currentUserId && !grouped}
+                  sender={members?.[m.senderId]}
                   onReply={() => onReply(m)}
                   onEdit={() => onEdit(m)}
                   onDelete={() => onDelete(m)}

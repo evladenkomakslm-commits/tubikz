@@ -153,12 +153,22 @@ enum ConversationType {
   SAVED
 }
 
+enum GroupRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
 model Conversation {
-  id        String           @id @default(cuid())
-  type      ConversationType @default(DIRECT)
-  title     String?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id          String           @id @default(cuid())
+  type        ConversationType @default(DIRECT)
+  title       String?
+  avatarUrl   String?
+  description String?
+  // Owner of a GROUP. Null for DIRECT/SAVED.
+  ownerId     String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   participants Participant[]
   messages     Message[]
@@ -171,6 +181,8 @@ model Participant {
   id             String    @id @default(cuid())
   userId         String
   conversationId String
+  // Role inside a GROUP. For DIRECT/SAVED leave default MEMBER.
+  role           GroupRole @default(MEMBER)
   joinedAt       DateTime  @default(now())
   lastReadAt     DateTime  @default(now())
   // null = not muted; future date = muted until then; epoch-far = "forever"

@@ -18,7 +18,6 @@ export async function GET() {
       conversation: {
         include: {
           participants: {
-            where: { userId: { not: me } },
             include: {
               user: {
                 select: {
@@ -59,12 +58,24 @@ export async function GET() {
           deletedAt: null,
         },
       });
+      const isGroup = p.conversation.type === 'GROUP';
+      const others = p.conversation.participants.filter((x) => x.userId !== me);
       return {
         id: p.conversationId,
         type: p.conversation.type,
         title: p.conversation.title,
-        peer: p.conversation.participants[0]?.user ?? null,
-        lastMessage: last,
+        avatarUrl: p.conversation.avatarUrl,
+        memberCount: isGroup ? p.conversation.participants.length : null,
+        peer: isGroup ? null : others[0]?.user ?? null,
+        lastMessage: last
+          ? {
+              ...last,
+              senderName: isGroup
+                ? p.conversation.participants.find((x) => x.userId === last.senderId)
+                    ?.user.username ?? null
+                : null,
+            }
+          : null,
         unreadCount,
         updatedAt: p.conversation.updatedAt,
         mutedUntil: p.mutedUntil ? p.mutedUntil.toISOString() : null,
