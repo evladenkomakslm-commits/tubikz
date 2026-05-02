@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { canManageMembers, loadGroupContext } from '@/lib/groups';
 import { emitToConversation } from '@/server/socket-bus';
 import { audienceAllows } from '@/lib/privacy';
+import { hasBlocked, isBlockedBetween } from '@/lib/blocks';
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
@@ -58,6 +59,11 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     peer = allowed ? rest : { ...rest, isOnline: false, lastSeenAt: new Date(0) };
   }
 
+  // Block status — drives the chat header menu (block / unblock).
+  const peerId = rawPeer?.id ?? null;
+  const blockedByMe = peerId ? await hasBlocked(me, peerId) : false;
+  const blockedEither = peerId ? await isBlockedBetween(me, peerId) : false;
+
   return NextResponse.json({
     conversation: {
       id: conversation.id,
@@ -71,6 +77,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       peer,
       mutedUntil: part.mutedUntil ? part.mutedUntil.toISOString() : null,
       archivedAt: part.archivedAt ? part.archivedAt.toISOString() : null,
+      blockedByMe,
+      blockedEither,
     },
   });
 }

@@ -28,7 +28,7 @@ import { ImageViewer, type GalleryImage } from './ImageViewer';
 import { CallButton } from '@/components/calls/CallButton';
 import { compressImage } from '@/lib/image-compress';
 import type { ChatMessage, PollView, ReactionSummary } from '@/types';
-import { formatTime } from '@/lib/utils';
+import { cn, formatTime } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 
 interface PeerInfo {
@@ -101,6 +101,8 @@ export function ChatRoom({
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [mutedUntil, setMutedUntil] = useState<string | null>(null);
   const [archivedAt, setArchivedAt] = useState<string | null>(null);
+  const [blockedByMe, setBlockedByMe] = useState(false);
+  const [blockedEither, setBlockedEither] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -133,6 +135,8 @@ export function ChatRoom({
     });
     setMutedUntil(conv.conversation?.mutedUntil ?? null);
     setArchivedAt(conv.conversation?.archivedAt ?? null);
+    setBlockedByMe(!!conv.conversation?.blockedByMe);
+    setBlockedEither(!!conv.conversation?.blockedEither);
     setMessages(msgs.messages ?? []);
     setLoading(false);
     fetch(`/api/conversations/${conversationId}/read`, { method: 'POST' }).catch(() => {});
@@ -245,9 +249,22 @@ export function ChatRoom({
     }
   }
 
-  /** Block the DIRECT-chat peer. Confirms first; on success bounces to /chat. */
-  async function blockPeer() {
+  /** Toggle block on the DIRECT-chat peer. Stays in the chat so the user
+   *  can hit "разблокировать" from the same place. */
+  async function toggleBlockPeer() {
     if (!peer) return;
+    if (blockedByMe) {
+      const r = await fetch(`/api/blocks/${peer.id}`, { method: 'DELETE' });
+      if (!r.ok) {
+        toast.push({ message: 'не удалось разблокировать', kind: 'error' });
+        return;
+      }
+      setBlockedByMe(false);
+      // Other side may still block us; reload to refresh blockedEither.
+      reload();
+      toast.push({ message: 'разблокирован' });
+      return;
+    }
     if (
       !confirm(
         `заблокировать ${peer.displayName ?? peer.username}? они не смогут писать вам, и наоборот.`,
@@ -259,8 +276,9 @@ export function ChatRoom({
       toast.push({ message: 'не удалось заблокировать', kind: 'error' });
       return;
     }
+    setBlockedByMe(true);
+    setBlockedEither(true);
     toast.push({ message: 'заблокирован' });
-    if (typeof window !== 'undefined') window.location.href = '/chat';
   }
 
   /** Report the DIRECT-chat peer for abuse. Quick prompt for reason. */
@@ -1070,19 +1088,21 @@ export function ChatRoom({
                     }}
                   />
                   <div className="h-px bg-border my-1" />
+                  {!blockedByMe && (
+                    <HMenuItem
+                      icon={<Flag className="w-4 h-4 text-danger" />}
+                      label="пожаловаться"
+                      onClick={() => {
+                        reportPeer();
+                        setMenuOpen(false);
+                      }}
+                    />
+                  )}
                   <HMenuItem
-                    icon={<Flag className="w-4 h-4 text-danger" />}
-                    label="пожаловаться"
+                    icon={<UserX className={cn('w-4 h-4', blockedByMe ? '' : 'text-danger')} />}
+                    label={blockedByMe ? 'разблокировать' : 'заблокировать'}
                     onClick={() => {
-                      reportPeer();
-                      setMenuOpen(false);
-                    }}
-                  />
-                  <HMenuItem
-                    icon={<UserX className="w-4 h-4 text-danger" />}
-                    label="заблокировать"
-                    onClick={() => {
-                      blockPeer();
+                      toggleBlockPeer();
                       setMenuOpen(false);
                     }}
                   />
@@ -1145,16 +1165,34 @@ export function ChatRoom({
       />
       {!isSaved && peerTyping && <TypingIndicator />}
 
-      <Composer
-        conversationId={conversationId}
-        onSend={sendMessage}
-        onTyping={isSaved ? () => {} : emitTyping}
-        replyTo={replyTo}
-        onCancelReply={() => setReplyTo(null)}
-        editing={editing}
-        onCancelEdit={() => setEditing(null)}
-        onSubmitEdit={handleEditSubmit}
-      />
+      {blockedEither ? (
+        <div className="border-t border-border/60 bg-bg-panel/95 px-4 py-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] text-center">
+          <div className="text-[14px] text-text-muted">
+            {blockedByMe
+              ? 'вы заблокировали этого пользователя'
+              : 'переписка недоступна'}
+          </div>
+          {blockedByMe && (
+            <button
+              onClick={toggleBlockPeer}
+              className="mt-1.5 text-[13px] text-accent hover:text-accent-hover"
+            >
+              разблокировать
+            </button>
+          )}
+        </div>
+      ) : (
+        <Composer
+          conversationId={conversationId}
+          onSend={sendMessage}
+          onTyping={isSaved ? () => {} : emitTyping}
+          replyTo={replyTo}
+          onCancelReply={() => setReplyTo(null)}
+          editing={editing}
+          onCancelEdit={() => setEditing(null)}
+          onSubmitEdit={handleEditSubmit}
+        />
+      )}
 
       {viewerOpen && (
         <ImageViewer
