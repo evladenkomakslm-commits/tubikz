@@ -456,7 +456,10 @@ export function Composer({
                 }}
                 rows={1}
                 placeholder={editing ? 'отредактируй сообщение' : 'напиши сообщение'}
-                className="flex-1 resize-none bg-transparent px-4 py-2.5 text-[15px] outline-none placeholder:text-text-subtle max-h-40"
+                // 16px is the threshold below which iOS Safari force-zooms
+                // the page on focus. Anything smaller (e.g. 15px) leaves the
+                // chat header stuck off-screen after blur.
+                className="flex-1 resize-none bg-transparent px-4 py-2.5 text-base outline-none placeholder:text-text-subtle max-h-40"
               />
             </div>
 

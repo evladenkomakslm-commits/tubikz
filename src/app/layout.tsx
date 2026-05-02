@@ -27,6 +27,12 @@ export const viewport: Viewport = {
   themeColor: '#0a0a0b',
   width: 'device-width',
   initialScale: 1,
+  // Prevent the iOS pinch-zoom from sticking after the keyboard hides — it
+  // would otherwise leave the chat in a zoomed-in state with the header
+  // pushed off-screen.
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
