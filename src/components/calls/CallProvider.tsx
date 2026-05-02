@@ -286,19 +286,37 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setScreenSharing(false);
       const local = useCallStore.getState().localStream;
       if (local) setLocalStream(new MediaStream(local.getTracks()));
-    } else {
-      const track = await ps.startScreenShare();
-      if (!track) return; // user cancelled
+      // After stop we may need a renegotiate (track change); CallProvider
+      // already wires onnegotiationneeded.
+      return;
+    }
+    if (!PeerSession.screenShareSupported()) {
+      toast.push({
+        message: 'демонстрация экрана не поддерживается на этом устройстве',
+        kind: 'error',
+      });
+      return;
+    }
+    try {
+      await ps.startScreenShare();
       setScreenSharing(true);
-      // Screen share implies a video session.
       patchCall({ type: 'VIDEO' });
       const local = useCallStore.getState().localStream;
       if (local) setLocalStream(new MediaStream(local.getTracks()));
-      // Keep the local-preview camera-off flag in sync — screen share
-      // overrides camera and the "camera off" indicator would lie.
       setCameraOff(false);
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : '';
+      if (reason === 'denied') {
+        toast.push({ message: 'нет разрешения на показ экрана', kind: 'error' });
+      } else if (reason === 'unsupported') {
+        toast.push({
+          message: 'демонстрация экрана не поддерживается на этом устройстве',
+          kind: 'error',
+        });
+      }
+      // 'cancelled' — silent
     }
-  }, [patchCall, setLocalStream, setScreenSharing, setCameraOff]);
+  }, [patchCall, setLocalStream, setScreenSharing, setCameraOff, toast]);
 
   const toggleNoiseSuppression = useCallback(async () => {
     const ps = peerRef.current;

@@ -139,31 +139,35 @@ export function CallView() {
         {/* Floating reaction layer */}
         <ReactionLayer reactions={reactions} />
 
-        {/* Quick reaction picker */}
+        {/* Quick reaction picker — wrapper centers, inner anims y/opacity
+            without fighting Tailwind's translateX (framer-motion would
+            otherwise overwrite the className's transform). */}
         <AnimatePresence>
           {reactionPickerOpen && (
-            <motion.div
-              initial={{ y: 16, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 16, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="absolute bottom-32 left-1/2 -translate-x-1/2 flex gap-1.5 bg-bg-panel/90 backdrop-blur-md rounded-full px-2 py-1.5 border border-white/10 shadow-2xl"
-              onMouseLeave={() => setReactionPickerOpen(false)}
-            >
-              {QUICK_REACTIONS.map((e) => (
-                <motion.button
-                  key={e}
-                  whileTap={{ scale: 1.4 }}
-                  onClick={() => {
-                    controller.sendReaction(e);
-                    setReactionPickerOpen(false);
-                  }}
-                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 text-2xl transition-colors"
-                >
-                  {e}
-                </motion.button>
-              ))}
-            </motion.div>
+            <div className="absolute bottom-32 inset-x-0 flex justify-center pointer-events-none px-3">
+              <motion.div
+                initial={{ y: 16, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 16, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="pointer-events-auto flex gap-1 sm:gap-1.5 bg-bg-panel/90 backdrop-blur-md rounded-full px-2 py-1.5 border border-white/10 shadow-2xl max-w-full"
+                onMouseLeave={() => setReactionPickerOpen(false)}
+              >
+                {QUICK_REACTIONS.map((e) => (
+                  <motion.button
+                    key={e}
+                    whileTap={{ scale: 1.4 }}
+                    onClick={() => {
+                      controller.sendReaction(e);
+                      setReactionPickerOpen(false);
+                    }}
+                    className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full hover:bg-white/10 text-xl sm:text-2xl transition-colors"
+                  >
+                    {e}
+                  </motion.button>
+                ))}
+              </motion.div>
+            </div>
           )}
         </AnimatePresence>
 

@@ -148,34 +148,57 @@ export class PeerSession {
     }
   }
 
+  /** True when the platform supports screen capture at all. */
+  static screenShareSupported(): boolean {
+    return (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.mediaDevices?.getDisplayMedia === 'function'
+    );
+  }
+
   /**
    * Replace the outgoing video sender's track with a captured screen.
-   * Returns the new track (or null if the user cancelled the picker).
-   * The original camera track is parked and re-attached on stop.
+   * Returns the new track. Throws on unsupported / denied so the caller
+   * can surface a useful toast.
+   *
+   * Throws:
+   *   - 'unsupported' when the browser doesn't expose getDisplayMedia
+   *     (iOS Safari is the main offender, no flag, no PWA workaround).
+   *   - 'cancelled' when the user closed the picker.
+   *   - 'denied' when permission was outright refused.
    */
-  async startScreenShare(): Promise<MediaStreamTrack | null> {
+  async startScreenShare(): Promise<MediaStreamTrack> {
     if (this.screenTrack) return this.screenTrack;
+    if (!PeerSession.screenShareSupported()) {
+      throw new Error('unsupported');
+    }
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
         video: { frameRate: { ideal: 30, max: 30 } },
         audio: false,
       });
-    } catch {
-      return null;
+    } catch (e) {
+      const name = (e as DOMException | undefined)?.name ?? '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        throw new Error('denied');
+      }
+      // AbortError = user cancelled the picker.
+      throw new Error('cancelled');
     }
     const [track] = stream.getVideoTracks();
-    if (!track) return null;
+    if (!track) throw new Error('cancelled');
     this.screenTrack = track;
 
-    let sender = this.pc.getSenders().find((s) => s.track?.kind === 'video');
+    const sender = this.pc.getSenders().find((s) => s.track?.kind === 'video');
     if (sender?.track) {
       this.parkedCameraTrack = sender.track;
       // Don't stop the camera track — we want to put it back later.
       await sender.replaceTrack(track);
     } else {
-      // No video sender yet (audio-only call): add one.
-      sender = this.pc.addTrack(track, this.localStream ?? new MediaStream());
+      // No video sender yet (audio-only call): add one. addTrack triggers
+      // onnegotiationneeded → CallProvider renegotiates with the peer.
+      this.pc.addTrack(track, this.localStream ?? new MediaStream());
     }
 
     // The browser's "stop sharing" button on top of the screen fires `ended`.
@@ -186,8 +209,10 @@ export class PeerSession {
     // Mirror in localStream so the self-preview shows the screen too.
     if (this.localStream) {
       const old = this.localStream.getVideoTracks()[0];
-      if (old) this.localStream.removeTrack(old);
-      this.localStream.addTrack(track);
+      if (old && old !== track) this.localStream.removeTrack(old);
+      if (!this.localStream.getTracks().includes(track)) {
+        this.localStream.addTrack(track);
+      }
     }
 
     return track;
