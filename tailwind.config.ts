@@ -30,10 +30,13 @@ const config: Config = {
           muted: '#8a8a96',
           subtle: '#5a5a66',
         },
+        // Accent colours read CSS variables so the user can pick a theme
+        // at runtime — see lib/theme.ts. Stored as RGB triplets so the
+        // standard `bg-accent/20` opacity syntax keeps working.
         accent: {
-          DEFAULT: '#7c5cff',
-          hover: '#8b6dff',
-          soft: '#7c5cff20',
+          DEFAULT: 'rgb(var(--accent-rgb) / <alpha-value>)',
+          hover: 'rgb(var(--accent-hover-rgb) / <alpha-value>)',
+          soft: 'rgb(var(--accent-rgb) / 0.125)',
         },
         success: '#3ecf8e',
         danger: '#ff5c5c',

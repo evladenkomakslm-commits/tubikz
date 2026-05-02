@@ -190,6 +190,7 @@ export function ProfilePanel() {
       <SessionsCard />
       <NotificationsCard />
       <PrivacyCard />
+      <ThemeCard />
       </div>
     </div>
   );
@@ -885,6 +886,67 @@ function PrivacyRow({
         <option value="FRIENDS">{AUDIENCE_LABELS.FRIENDS}</option>
         <option value="NOBODY">{AUDIENCE_LABELS.NOBODY}</option>
       </select>
+    </div>
+  );
+}
+
+/* ─────────── Theme card ─────────── */
+function ThemeCard() {
+  const [name, setName] = useState<import('@/lib/theme').AccentName>('purple');
+  useEffect(() => {
+    void import('@/lib/theme').then((m) => setName(m.loadAccent()));
+  }, []);
+  async function pick(n: import('@/lib/theme').AccentName) {
+    const m = await import('@/lib/theme');
+    m.applyAccent(n);
+    setName(n);
+  }
+  const colors: Array<{ name: import('@/lib/theme').AccentName; hex: string; label: string }> =
+    [
+      { name: 'purple', hex: '#7c5cff', label: 'фиолет' },
+      { name: 'pink', hex: '#ff5ca1', label: 'розовый' },
+      { name: 'emerald', hex: '#3ecf8e', label: 'мятный' },
+      { name: 'sky', hex: '#5cb1ff', label: 'голубой' },
+      { name: 'amber', hex: '#ffa45c', label: 'янтарный' },
+    ];
+  return (
+    <div className="bg-bg-panel border border-border rounded-2xl p-5">
+      <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+        акцент
+      </h2>
+      <div className="flex flex-wrap gap-3">
+        {colors.map((c) => {
+          const active = name === c.name;
+          return (
+            <button
+              key={c.name}
+              onClick={() => pick(c.name)}
+              className={cn(
+                'flex flex-col items-center gap-1.5 group',
+                'transition-transform active:scale-95',
+              )}
+            >
+              <div
+                style={{ background: c.hex }}
+                className={cn(
+                  'w-10 h-10 rounded-full transition-all',
+                  active
+                    ? 'ring-2 ring-offset-4 ring-offset-bg-panel ring-white/80 scale-110'
+                    : 'hover:scale-105',
+                )}
+              />
+              <span
+                className={cn(
+                  'text-[11px]',
+                  active ? 'text-text' : 'text-text-muted',
+                )}
+              >
+                {c.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 'use client';
 import { useEffect } from 'react';
 import { useSocket } from '@/hooks/useSocket';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { bootstrapAccent } from '@/lib/theme';
 import { Sidebar } from './Sidebar';
 import { CallProvider } from '@/components/calls/CallProvider';
 import { DebugBar } from '@/components/debug/DebugBar';
@@ -52,6 +54,12 @@ export function AppShell({
 }) {
   const socket = useSocket();
   useViewportVars();
+  useKeyboardShortcuts();
+
+  // Re-apply saved accent every mount in case SSR served the default.
+  useEffect(() => {
+    bootstrapAccent();
+  }, []);
 
   useEffect(() => {
     if (!socket) return;

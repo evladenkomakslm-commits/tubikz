@@ -4,6 +4,9 @@
 
 :root {
   color-scheme: dark;
+  /* Default accent (purple). lib/theme.ts overrides at runtime. */
+  --accent-rgb: 124 92 255;
+  --accent-hover-rgb: 139 109 255;
 }
 
 html,

@@ -6,6 +6,7 @@ import { getToken } from 'next-auth/jwt';
 import { prisma } from './src/lib/db';
 import { setIO } from './src/server/socket-bus';
 import { startScheduler } from './src/server/scheduler';
+import { pushToUser } from './src/lib/push';
 
 const dev = process.env.NODE_ENV !== 'production';
 const port = Number(process.env.PORT ?? 3000);
@@ -148,7 +149,40 @@ void app.prepare().then(() => {
       io.to(room).emit(event, { ...payload, from: userId });
     };
 
-    socket.on('call:invite', fwd('call:invite'));
+    // Special-case call:invite — also fire web push so the callee gets
+    // an OS-level notification when the app isn't open.
+    socket.on(
+      'call:invite',
+      async (payload: { peerId: string } & Record<string, unknown>) => {
+        if (!payload?.peerId || typeof payload.peerId !== 'string') return;
+        io.to(`user:${payload.peerId}`).emit('call:invite', {
+          ...payload,
+          from: userId,
+        });
+        // Best-effort push fan-out.
+        void (async () => {
+          try {
+            const caller = await prisma.user.findUnique({
+              where: { id: userId },
+              select: { username: true, displayName: true },
+            });
+            const callType = (payload as { callType?: 'AUDIO' | 'VIDEO' })
+              .callType;
+            const conversationId =
+              (payload as { conversationId?: string }).conversationId ?? '';
+            await pushToUser(payload.peerId, {
+              title:
+                callType === 'VIDEO' ? '📹 Видеозвонок' : '📞 Входящий звонок',
+              body: caller?.displayName ?? caller?.username ?? '',
+              url: `/chat/${conversationId}`,
+              tag: `call-${userId}`,
+            });
+          } catch {
+            /* push is best-effort */
+          }
+        })();
+      },
+    );
     socket.on('call:answer', fwd('call:answer'));
     socket.on('call:ice', fwd('call:ice'));
     socket.on('call:cancel', fwd('call:cancel'));

@@ -10,5 +10,11 @@
     "files": [
       "static/chunks/297.e03fd0203c74f20e.js"
     ]
+  },
+  "components/profile/ProfilePanel.tsx -> @/lib/theme": {
+    "id": 5366,
+    "files": [
+      "static/chunks/366.e9134c696b194735.js"
+    ]
   }
 }

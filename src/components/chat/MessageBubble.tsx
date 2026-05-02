@@ -238,8 +238,23 @@ export function MessageBubble({
         <div className="shrink-0 mr-1.5 w-7" />
       )}
 
-      {/* Wrapper holds the bubble + reactions row + floating action menu. */}
-      <div className={cn('relative max-w-[78%] sm:max-w-[65%]', isMe ? 'items-end' : 'items-start')}>
+      {/* Wrapper holds the bubble + reactions row + floating action menu.
+          Wrapped in a drag-x motion so swiping horizontally reveals a
+          reply hint and (past a threshold) fires onReply — Telegram-style. */}
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: -60, right: 60 }}
+        dragElastic={0.4}
+        dragSnapToOrigin
+        // Open the reply on a decisive swipe in either direction.
+        onDragEnd={(_, info) => {
+          if (Math.abs(info.offset.x) > 50 || Math.abs(info.velocity.x) > 250) {
+            haptic('tap');
+            onReply();
+          }
+        }}
+        className={cn('relative max-w-[78%] sm:max-w-[65%]', isMe ? 'items-end' : 'items-start')}
+      >
         <div
           ref={bubbleRef}
           onContextMenu={(e) => {
@@ -720,7 +735,7 @@ export function MessageBubble({
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
     </div>
   );
 }
