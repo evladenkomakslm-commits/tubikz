@@ -617,6 +617,7 @@ function parseUA(ua: string): { label: string } {
 
 /* ─────────── Notifications card (push + sounds) ─────────── */
 function NotificationsCard() {
+  const toast = useToast();
   const [pushOn, setPushOn] = useState<'unknown' | 'on' | 'off' | 'denied'>('unknown');
   const [soundsOn, setSoundsOn] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -725,6 +726,31 @@ function NotificationsCard() {
           {soundsOn ? 'выключить' : 'включить'}
         </button>
       </div>
+
+      {pushOn === 'on' && (
+        <>
+          <div className="h-px bg-border my-1" />
+          <button
+            onClick={async () => {
+              const r = await fetch('/api/debug/test-push', { method: 'POST' });
+              const d = await r.json().catch(() => ({}));
+              if (!r.ok || !d.ok) {
+                toast.push({
+                  message: d?.hint ?? 'тест не прошёл',
+                  kind: 'error',
+                });
+              } else {
+                toast.push({
+                  message: 'тест отправлен — должен прийти в течение 5 секунд',
+                });
+              }
+            }}
+            className="w-full mt-2 text-[13px] text-text-muted hover:text-text"
+          >
+            проверить push
+          </button>
+        </>
+      )}
     </div>
   );
 }

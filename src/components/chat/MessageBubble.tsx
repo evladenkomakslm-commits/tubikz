@@ -194,13 +194,13 @@ export function MessageBubble({
   const isPinned = !!message.pinnedAt;
 
   function startLongPress(e: React.TouchEvent | React.MouseEvent) {
-    e.stopPropagation();
+    // Don't stopPropagation — it would prevent the parent drag-x motion
+    // from receiving pointer events and break the swipe-to-reply gesture.
+    void e;
     longPressFiredRef.current = false;
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
     longPressTimer.current = setTimeout(() => {
       longPressFiredRef.current = true;
-      // Drop any text-selection that iOS might have started despite
-      // user-select:none, so it doesn't sit highlighted under our menu.
       const sel = window.getSelection?.();
       sel?.removeAllRanges?.();
       setMenuOpen(true);
