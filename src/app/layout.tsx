@@ -41,16 +41,16 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ru" className="dark">
+    <html lang="ru" className="dark" style={{ height: '100%' }}>
       {/*
-        Body locks to the *visual* viewport (driven by --app-h), not the
-        layout viewport, so the iOS keyboard never leaves a black strip
-        between the composer and the keys. AppShell's hook fills --app-h
-        with `visualViewport.height`px on mount + on resize.
+        AppShell is positioned fixed against the visual viewport (driven
+        by --app-h / --app-top), so body itself just needs to be a fully
+        covered, non-scrollable surface. overscroll-none kills the rubber-
+        band that would otherwise leak the bg color above/below.
       */}
       <body
         className="bg-bg text-text font-sans overflow-hidden overscroll-none"
-        style={{ height: 'var(--app-h, 100dvh)' }}
+        style={{ height: '100%', margin: 0 }}
       >
         <Providers>{children}</Providers>
       </body>

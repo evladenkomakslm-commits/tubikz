@@ -6,19 +6,26 @@ import { CallProvider } from '@/components/calls/CallProvider';
 import { DebugBar } from '@/components/debug/DebugBar';
 
 /**
- * Mirror the visual viewport's actual height into --app-h. iOS keeps the
- * layout viewport at full screen height regardless of the keyboard, so we
- * can't trust 100dvh / 100vh — they'd leave a strip of body bg below the
- * composer. visualViewport.height *is* the visible area, so we use it
- * verbatim and let body + AppShell pin to it.
+ * Pin AppShell to the *visual* viewport rather than the layout viewport.
+ *
+ * On iOS Safari, focusing an input opens the keyboard and shifts the
+ * visualViewport up by ~300px. position:fixed elements still anchor to
+ * the layout viewport, so anything `bottom: 0` ends up under the keyboard,
+ * and the page scrolls weirdly. Telegram-style fix: drive AppShell with
+ * `position: fixed` + a manual translateY equal to visualViewport.offsetTop
+ * and a height equal to visualViewport.height. Now the whole app lives
+ * exactly inside the visible window, no matter what iOS does with the
+ * layout viewport.
  */
-function useAppHeightVar() {
+function useViewportVars() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const vv = window.visualViewport;
     const apply = () => {
       const h = vv?.height ?? window.innerHeight;
+      const top = vv?.offsetTop ?? 0;
       document.documentElement.style.setProperty('--app-h', `${h}px`);
+      document.documentElement.style.setProperty('--app-top', `${top}px`);
     };
     apply();
     if (vv) {
@@ -44,7 +51,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const socket = useSocket();
-  useAppHeightVar();
+  useViewportVars();
 
   useEffect(() => {
     if (!socket) return;
@@ -73,10 +80,18 @@ export function AppShell({
         Desktop (md+): row with Sidebar on the left.
       */}
       <div
-        // h-full == 100% of body, which itself is glued to --app-h
-        // (== visualViewport.height). Keyboard open or closed, this
-        // exactly fills the visible region.
-        className="h-full w-screen flex flex-col-reverse md:flex-row overflow-hidden bg-bg"
+        // Pinned to the visual viewport. iOS will move the visualViewport
+        // (offsetTop) and shrink it (height) when the keyboard opens —
+        // this div follows in lock-step, so the composer is always glued
+        // to the top of the keyboard.
+        style={{
+          position: 'fixed',
+          top: 'var(--app-top, 0px)',
+          left: 0,
+          width: '100%',
+          height: 'var(--app-h, 100dvh)',
+        }}
+        className="flex flex-col-reverse md:flex-row overflow-hidden bg-bg"
       >
         <Sidebar user={user} />
         <div className="flex-1 min-w-0 flex flex-col bg-bg-subtle overflow-hidden">
