@@ -20,6 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import { MessageList } from './MessageList';
 import { Composer, type ReplyTarget, type EditTarget } from './Composer';
 import { TypingIndicator } from './TypingIndicator';
+import { GroupInfoSheet } from './GroupInfoSheet';
 import { CallButton } from '@/components/calls/CallButton';
 import type { ChatMessage, ReactionSummary } from '@/types';
 import { formatTime } from '@/lib/utils';
@@ -79,6 +80,7 @@ export function ChatRoom({
   const [mutedUntil, setMutedUntil] = useState<string | null>(null);
   const [archivedAt, setArchivedAt] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const socket = useSocket();
@@ -304,12 +306,20 @@ export function ChatRoom({
       }
     };
 
+    const onMembers = (payload: { conversationId: string }) => {
+      if (payload.conversationId !== conversationId) return;
+      // Member roster changed (added / kicked / role flip / leave). Just
+      // reload the meta + roster so the header count and bubble names sync.
+      reload();
+    };
+
     socket.on('message:new', onMessage);
     socket.on('message:edited', onEdited);
     socket.on('message:deleted', onDeleted);
     socket.on('message:reaction', onReaction);
     socket.on('message:pinned', onPinned);
     socket.on('message:read', onRead);
+    socket.on('members:changed', onMembers);
     socket.on('typing', onTyping);
     socket.on('presence', onPresence);
     return () => {
@@ -319,10 +329,11 @@ export function ChatRoom({
       socket.off('message:reaction', onReaction);
       socket.off('message:pinned', onPinned);
       socket.off('message:read', onRead);
+      socket.off('members:changed', onMembers);
       socket.off('typing', onTyping);
       socket.off('presence', onPresence);
     };
-  }, [socket, conversationId, currentUserId, peer]);
+  }, [socket, conversationId, currentUserId, peer, reload]);
 
   async function sendMessage(input: {
     type: ChatMessage['type'];
@@ -620,23 +631,28 @@ export function ChatRoom({
           </>
         ) : isGroup ? (
           <>
-            <GroupAvatar
-              src={groupMeta.avatarUrl}
-              name={groupMeta.title ?? 'группа'}
-              size={40}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold truncate text-[15px]">
-                {groupMeta.title ?? 'группа'}
+            <button
+              onClick={() => setInfoOpen(true)}
+              className="flex items-center gap-3 flex-1 min-w-0 -my-1 -ml-1 pl-1 pr-2 py-1 rounded-xl hover:bg-bg-hover transition-colors text-left"
+            >
+              <GroupAvatar
+                src={groupMeta.avatarUrl}
+                name={groupMeta.title ?? 'группа'}
+                size={40}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold truncate text-[15px]">
+                  {groupMeta.title ?? 'группа'}
+                </div>
+                <div className="text-[12px] text-text-muted truncate">
+                  {peerTyping ? (
+                    <span className="text-accent">кто-то печатает…</span>
+                  ) : (
+                    `${groupMeta.memberCount ?? 1} участн${(groupMeta.memberCount ?? 1) === 1 ? 'ик' : (groupMeta.memberCount ?? 1) < 5 ? 'ика' : 'иков'}`
+                  )}
+                </div>
               </div>
-              <div className="text-[12px] text-text-muted truncate">
-                {peerTyping ? (
-                  <span className="text-accent">кто-то печатает…</span>
-                ) : (
-                  `${groupMeta.memberCount ?? 1} участн${(groupMeta.memberCount ?? 1) === 1 ? 'ик' : (groupMeta.memberCount ?? 1) < 5 ? 'ика' : 'иков'}`
-                )}
-              </div>
-            </div>
+            </button>
             <div className="relative" ref={headerMenuRef}>
               <button
                 onClick={() => setMenuOpen((v) => !v)}
@@ -846,6 +862,19 @@ export function ChatRoom({
         onCancelEdit={() => setEditing(null)}
         onSubmitEdit={handleEditSubmit}
       />
+
+      {isGroup && (
+        <GroupInfoSheet
+          open={infoOpen}
+          onClose={() => setInfoOpen(false)}
+          conversationId={conversationId}
+          title={groupMeta.title ?? 'группа'}
+          avatarUrl={groupMeta.avatarUrl}
+          myRole={groupMeta.myRole}
+          meId={currentUserId}
+          onChanged={reload}
+        />
+      )}
     </div>
   );
 }
