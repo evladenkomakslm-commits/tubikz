@@ -4,6 +4,4 @@
  */
 export const AUTH_ERR = {
   WRONG: 'wrong_credentials',
-  NEEDS_2FA: 'needs_2fa',
-  WRONG_2FA: 'wrong_2fa',
 } as const;

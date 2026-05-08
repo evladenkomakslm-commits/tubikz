@@ -31,7 +31,6 @@ export const registerSchema = z.object({
 export const loginSchema = z.object({
   email: emailSchema,
   password: z.string().min(1, 'введи пароль'),
-  totpCode: z.string().regex(/^\d{6}$/).optional(),
 });
 
 export const messageSchema = z.object({

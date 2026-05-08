@@ -4,7 +4,6 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { prisma } from './db';
 import { loginSchema } from './validators';
-import { verifyTotp } from './totp';
 import { AUTH_ERR } from './auth-errors';
 
 export { AUTH_ERR };
@@ -18,7 +17,6 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'email', type: 'email' },
         password: { label: 'password', type: 'password' },
-        totpCode: { label: 'totpCode', type: 'text' },
       },
       async authorize(credentials) {
         const parsed = loginSchema.safeParse(credentials);
@@ -26,22 +24,11 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email.toLowerCase() },
-          include: { totp: true },
         });
         if (!user) throw new Error(AUTH_ERR.WRONG);
 
         const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
         if (!ok) throw new Error(AUTH_ERR.WRONG);
-
-        // 2FA gate. If user has TOTP enabled, the code is required and must verify.
-        if (user.totp?.enabled) {
-          if (!parsed.data.totpCode) {
-            throw new Error(AUTH_ERR.NEEDS_2FA);
-          }
-          if (!verifyTotp(user.totp.secret, parsed.data.totpCode)) {
-            throw new Error(AUTH_ERR.WRONG_2FA);
-          }
-        }
 
         return {
           id: user.id,
