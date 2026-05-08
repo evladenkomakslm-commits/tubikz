@@ -19,35 +19,75 @@ self.addEventListener('push', (event) => {
     payload = { title: '₮ubikz', body: event.data.text?.() ?? '' };
   }
   const title = payload.title || '₮ubikz';
+  const isCall = payload?.data?.kind === 'call';
   const options = {
     body: payload.body || '',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: payload.tag || 'tubikz',
     renotify: true,
-    data: { url: payload.url || '/chat' },
+    requireInteraction: !!payload.requireInteraction,
+    actions: payload.actions || [],
+    // Calls vibrate in a "ring-ring" pattern — distinct from chat pings.
+    vibrate: isCall ? [400, 200, 400, 200, 400, 200, 400] : undefined,
+    data: {
+      url: payload.url || '/chat',
+      ...(payload.data || {}),
+    },
   };
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
 self.addEventListener('notificationclick', (event) => {
+  const data = event.notification.data || {};
+  const action = event.action || '';
+  const isCall = data.kind === 'call';
+
   event.notification.close();
-  const target = event.notification.data?.url || '/chat';
+
+  // For call decline action — fire-and-forget DELETE; no need to open the app.
+  if (isCall && action === 'decline') {
+    event.waitUntil(
+      fetch('/api/calls/decline-from-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          callId: data.callId,
+          callerId: data.callerId,
+          conversationId: data.conversationId,
+        }),
+        credentials: 'include',
+      }).catch(() => {}),
+    );
+    return;
+  }
+
+  // Decide where to navigate:
+  //   - call answer → conversation page with ?call=<id>&action=answer so
+  //     CallProvider auto-accepts on mount.
+  //   - everything else → notification's stored url.
+  let target = data.url || '/chat';
+  if (isCall && action === 'answer' && data.conversationId) {
+    target = `/chat/${data.conversationId}?call=${data.callId || ''}&action=answer`;
+  } else if (isCall && data.conversationId) {
+    target = `/chat/${data.conversationId}?call=${data.callId || ''}`;
+  }
+
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
-      // Focus an existing window if it's already open.
-      for (const w of wins) {
-        try {
-          const u = new URL(w.url);
-          if (u.origin === self.location.origin) {
-            w.focus();
-            if ('navigate' in w) w.navigate(target);
-            return;
-          }
-        } catch {}
-      }
-      // Otherwise open a new one.
-      return self.clients.openWindow(target);
-    }),
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((wins) => {
+        for (const w of wins) {
+          try {
+            const u = new URL(w.url);
+            if (u.origin === self.location.origin) {
+              w.focus();
+              if ('navigate' in w) w.navigate(target);
+              return;
+            }
+          } catch {}
+        }
+        return self.clients.openWindow(target);
+      }),
   );
 });

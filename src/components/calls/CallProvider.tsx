@@ -464,6 +464,24 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     }
   }, [call?.phase, call?.peer.username, call?.peer.displayName]);
 
+  /**
+   * Auto-accept when the user tapped "Принять" on a push notification.
+   * The SW navigates to /chat/<id>?action=answer&call=<id>; once the
+   * matching call:invite arrives via socket replay, we answer it.
+   */
+  useEffect(() => {
+    if (call?.phase !== 'incoming-ringing' || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('action') === 'answer' && params.get('call') === call.callId) {
+      void acceptIncoming();
+      // Clean the query so reload doesn't re-trigger.
+      const u = new URL(window.location.href);
+      u.searchParams.delete('action');
+      u.searchParams.delete('call');
+      window.history.replaceState({}, '', u.toString());
+    }
+  }, [call?.phase, call?.callId, acceptIncoming]);
+
   useEffect(() => {
     if (
       typeof Notification !== 'undefined' &&

@@ -13,11 +13,23 @@ function ensureConfigured() {
   configured = true;
 }
 
+export interface PushAction {
+  action: string;
+  title: string;
+}
+
 export interface PushPayload {
   title: string;
   body: string;
   url?: string;
   tag?: string;
+  /** Inline notification buttons (iOS 16.4+ / Chrome / Firefox). */
+  actions?: PushAction[];
+  /** Renders the notification as "important" — forces banner on Android, locks
+      it for ~30s so call invites don't dismiss themselves. */
+  requireInteraction?: boolean;
+  /** Free-form data attached to the notification; SW reads on click. */
+  data?: Record<string, unknown>;
 }
 
 /**

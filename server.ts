@@ -8,6 +8,39 @@ import { setIO } from './src/server/socket-bus';
 import { startScheduler } from './src/server/scheduler';
 import { pushToUser } from './src/lib/push';
 
+/**
+ * In-memory replay cache for call invites. If the callee isn't connected
+ * via socket when the invite fires (browser closed / network blip), we
+ * still want them to see the call when they open the app within ~30s —
+ * the same way a missed-call native ringtone keeps ringing for a while.
+ *
+ * Keyed by callee userId. We only ever keep the latest invite per user;
+ * a new one supersedes the old.
+ */
+interface PendingInvite {
+  payload: Record<string, unknown>;
+  expiresAt: number;
+  timer: NodeJS.Timeout;
+}
+const pendingInvites = new Map<string, PendingInvite>();
+const INVITE_TTL_MS = 35_000;
+function clearPendingInvite(userId: string) {
+  const prev = pendingInvites.get(userId);
+  if (prev) {
+    clearTimeout(prev.timer);
+    pendingInvites.delete(userId);
+  }
+}
+function rememberPendingInvite(userId: string, payload: Record<string, unknown>) {
+  clearPendingInvite(userId);
+  const timer = setTimeout(() => pendingInvites.delete(userId), INVITE_TTL_MS);
+  pendingInvites.set(userId, {
+    payload,
+    expiresAt: Date.now() + INVITE_TTL_MS,
+    timer,
+  });
+}
+
 const dev = process.env.NODE_ENV !== 'production';
 const port = Number(process.env.PORT ?? 3000);
 // Always bind to 0.0.0.0 — Render/Heroku/etc set HOSTNAME to the pod name,
@@ -123,6 +156,13 @@ void app.prepare().then(() => {
       io.to(`user:${f.friendId}`).emit('presence', { userId, isOnline: true });
     }
 
+    // Replay any pending call invite that landed while we were offline,
+    // so an app-open within the 35s window picks it up.
+    const stash = pendingInvites.get(userId);
+    if (stash && stash.expiresAt > Date.now()) {
+      socket.emit('call:invite', stash.payload);
+    }
+
     socket.on('typing', (payload: { conversationId: string; isTyping: boolean }) => {
       if (!payload?.conversationId) return;
       socket.to(`conv:${payload.conversationId}`).emit('typing', {
@@ -150,16 +190,17 @@ void app.prepare().then(() => {
     };
 
     // Special-case call:invite — also fire web push so the callee gets
-    // an OS-level notification when the app isn't open.
+    // an OS-level notification when the app isn't open, and stash the
+    // invite for ~35s so app-opens within that window can replay it.
     socket.on(
       'call:invite',
       async (payload: { peerId: string } & Record<string, unknown>) => {
         if (!payload?.peerId || typeof payload.peerId !== 'string') return;
-        io.to(`user:${payload.peerId}`).emit('call:invite', {
-          ...payload,
-          from: userId,
-        });
-        // Best-effort push fan-out.
+        const fullPayload = { ...payload, from: userId };
+        io.to(`user:${payload.peerId}`).emit('call:invite', fullPayload);
+        rememberPendingInvite(payload.peerId, fullPayload);
+
+        // Best-effort web push with answer / decline action buttons.
         void (async () => {
           try {
             const caller = await prisma.user.findUnique({
@@ -170,12 +211,25 @@ void app.prepare().then(() => {
               .callType;
             const conversationId =
               (payload as { conversationId?: string }).conversationId ?? '';
+            const callId =
+              (payload as { callId?: string }).callId ?? '';
             await pushToUser(payload.peerId, {
               title:
                 callType === 'VIDEO' ? '📹 Видеозвонок' : '📞 Входящий звонок',
               body: caller?.displayName ?? caller?.username ?? '',
-              url: `/chat/${conversationId}`,
+              url: `/chat/${conversationId}?call=${callId}`,
               tag: `call-${userId}`,
+              requireInteraction: true,
+              actions: [
+                { action: 'answer', title: 'Принять' },
+                { action: 'decline', title: 'Отклонить' },
+              ],
+              data: {
+                kind: 'call',
+                callId,
+                conversationId,
+                callerId: userId,
+              },
             });
           } catch {
             /* push is best-effort */
@@ -183,11 +237,18 @@ void app.prepare().then(() => {
         })();
       },
     );
+    // Caller cancelled / callee declined / hangup → drop the stash so a
+    // late socket reconnect doesn't replay a finished call.
+    const dropPending = (event: string) =>
+      async (payload: { peerId: string } & Record<string, unknown>) => {
+        if (typeof payload?.peerId === 'string') clearPendingInvite(payload.peerId);
+        return fwd(event)(payload);
+      };
     socket.on('call:answer', fwd('call:answer'));
     socket.on('call:ice', fwd('call:ice'));
-    socket.on('call:cancel', fwd('call:cancel'));
-    socket.on('call:decline', fwd('call:decline'));
-    socket.on('call:hangup', fwd('call:hangup'));
+    socket.on('call:cancel', dropPending('call:cancel'));
+    socket.on('call:decline', dropPending('call:decline'));
+    socket.on('call:hangup', dropPending('call:hangup'));
     socket.on('call:renegotiate', fwd('call:renegotiate'));
     socket.on('call:reaction', fwd('call:reaction'));
 
