@@ -492,6 +492,93 @@ function NotificationsCard() {
           </button>
         </>
       )}
+
+      <div className="h-px bg-border my-1" />
+      <CallDiagnostic />
+    </div>
+  );
+}
+
+/**
+ * Visual debugger for the call ICE-server list. Fetches /api/calls/ice-servers
+ * and shows what the client would actually use, so you can tell at a glance
+ * whether TURN (metered.ca) is plugged in correctly without opening DevTools.
+ */
+function CallDiagnostic() {
+  const [state, setState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'loading' }
+    | { kind: 'ok'; stun: number; turn: number; servers: string[] }
+    | { kind: 'err'; msg: string }
+  >({ kind: 'idle' });
+
+  async function check() {
+    setState({ kind: 'loading' });
+    try {
+      const r = await fetch('/api/calls/ice-servers');
+      const d = await r.json();
+      if (!r.ok || !Array.isArray(d.iceServers)) {
+        setState({ kind: 'err', msg: d?.error ?? 'не удалось получить ответ' });
+        return;
+      }
+      const servers = d.iceServers as Array<{ urls: string | string[] }>;
+      const flat = servers.flatMap((s) =>
+        Array.isArray(s.urls) ? s.urls : [s.urls],
+      );
+      const stun = flat.filter((u) => u.startsWith('stun:')).length;
+      const turn = flat.filter((u) => u.startsWith('turn')).length;
+      setState({ kind: 'ok', stun, turn, servers: flat });
+    } catch (e) {
+      setState({
+        kind: 'err',
+        msg: e instanceof Error ? e.message : 'сеть',
+      });
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      <button
+        onClick={check}
+        className="w-full text-[13px] text-text-muted hover:text-text"
+      >
+        проверить звонки (TURN)
+      </button>
+      {state.kind === 'loading' && (
+        <div className="text-[12px] text-text-muted text-center">
+          <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" />
+          проверяем…
+        </div>
+      )}
+      {state.kind === 'err' && (
+        <div className="text-[12px] text-danger px-3 py-2 bg-danger/10 rounded-lg">
+          ошибка: {state.msg}
+        </div>
+      )}
+      {state.kind === 'ok' && (
+        <div className="text-[12px] px-3 py-2 rounded-lg bg-bg-elevated">
+          <div className="flex items-center justify-between">
+            <span>STUN серверов:</span>
+            <span className="text-text">{state.stun}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>TURN серверов:</span>
+            <span
+              className={
+                state.turn > 0 ? 'text-success font-medium' : 'text-danger'
+              }
+            >
+              {state.turn} {state.turn === 0 && '— TURN не настроен'}
+            </span>
+          </div>
+          {state.turn === 0 && (
+            <div className="mt-2 text-text-muted leading-snug">
+              без TURN звонки между разными сетями не пройдут. проверь
+              METERED_API_KEY и METERED_APP_NAME в Render.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
