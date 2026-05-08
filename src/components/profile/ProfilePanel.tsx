@@ -508,26 +508,36 @@ function CallDiagnostic() {
   const [state, setState] = useState<
     | { kind: 'idle' }
     | { kind: 'loading' }
-    | { kind: 'ok'; stun: number; turn: number; servers: string[] }
+    | {
+        kind: 'ok';
+        stun: number;
+        turn: number;
+        servers: string[];
+        diag: Record<string, unknown> | null;
+      }
     | { kind: 'err'; msg: string }
   >({ kind: 'idle' });
 
   async function check() {
     setState({ kind: 'loading' });
     try {
-      const r = await fetch('/api/calls/ice-servers');
-      const d = await r.json();
-      if (!r.ok || !Array.isArray(d.iceServers)) {
-        setState({ kind: 'err', msg: d?.error ?? 'не удалось получить ответ' });
+      const [iceRes, diagRes] = await Promise.all([
+        fetch('/api/calls/ice-servers'),
+        fetch('/api/debug/turn'),
+      ]);
+      const ice = await iceRes.json();
+      const diag = await diagRes.json().catch(() => null);
+      if (!iceRes.ok || !Array.isArray(ice.iceServers)) {
+        setState({ kind: 'err', msg: ice?.error ?? 'не удалось получить ответ' });
         return;
       }
-      const servers = d.iceServers as Array<{ urls: string | string[] }>;
+      const servers = ice.iceServers as Array<{ urls: string | string[] }>;
       const flat = servers.flatMap((s) =>
         Array.isArray(s.urls) ? s.urls : [s.urls],
       );
       const stun = flat.filter((u) => u.startsWith('stun:')).length;
       const turn = flat.filter((u) => u.startsWith('turn')).length;
-      setState({ kind: 'ok', stun, turn, servers: flat });
+      setState({ kind: 'ok', stun, turn, servers: flat, diag });
     } catch (e) {
       setState({
         kind: 'err',
@@ -556,7 +566,7 @@ function CallDiagnostic() {
         </div>
       )}
       {state.kind === 'ok' && (
-        <div className="text-[12px] px-3 py-2 rounded-lg bg-bg-elevated">
+        <div className="text-[12px] px-3 py-2 rounded-lg bg-bg-elevated space-y-1">
           <div className="flex items-center justify-between">
             <span>STUN серверов:</span>
             <span className="text-text">{state.stun}</span>
@@ -571,6 +581,16 @@ function CallDiagnostic() {
               {state.turn} {state.turn === 0 && '— TURN не настроен'}
             </span>
           </div>
+          {state.diag && (
+            <details className="mt-2 border-t border-border/60 pt-2">
+              <summary className="cursor-pointer text-text-muted">
+                подробная диагностика
+              </summary>
+              <pre className="mt-1 text-[11px] whitespace-pre-wrap break-all leading-snug">
+                {JSON.stringify(state.diag, null, 2)}
+              </pre>
+            </details>
+          )}
           {state.turn === 0 && (
             <div className="mt-2 text-text-muted leading-snug">
               без TURN звонки между разными сетями не пройдут. проверь
