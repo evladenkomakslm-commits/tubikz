@@ -1,21 +1,39 @@
 'use client';
 import type { CallQuality } from '@/types/calls';
 
-const ICE_SERVERS: RTCIceServer[] = [
+const FALLBACK_ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
-const TURN_URL = process.env.NEXT_PUBLIC_TURN_URL;
-const TURN_USERNAME = process.env.NEXT_PUBLIC_TURN_USERNAME;
-const TURN_CREDENTIAL = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
-if (TURN_URL && TURN_USERNAME && TURN_CREDENTIAL) {
-  ICE_SERVERS.push({
-    urls: TURN_URL,
-    username: TURN_USERNAME,
-    credential: TURN_CREDENTIAL,
-  });
+let cachedIce: { servers: RTCIceServer[]; expiresAt: number } | null = null;
+
+/**
+ * Pull ICE servers (STUN + TURN) from /api/calls/ice-servers. The server
+ * mints short-lived TURN credentials so we don't have to bake any TURN
+ * secret into the client bundle. Cached for 1h on the client too — the
+ * server hands out the same set anyway.
+ */
+async function getIceServers(): Promise<RTCIceServer[]> {
+  const now = Date.now();
+  if (cachedIce && cachedIce.expiresAt > now) return cachedIce.servers;
+  try {
+    const res = await fetch('/api/calls/ice-servers');
+    if (res.ok) {
+      const data = (await res.json()) as { iceServers: RTCIceServer[] };
+      if (Array.isArray(data.iceServers) && data.iceServers.length > 0) {
+        cachedIce = {
+          servers: data.iceServers,
+          expiresAt: now + 60 * 60 * 1000,
+        };
+        return data.iceServers;
+      }
+    }
+  } catch {
+    // Fall through to STUN-only.
+  }
+  return FALLBACK_ICE;
 }
 
 export interface PeerCallbacks {
@@ -40,10 +58,20 @@ export class PeerSession {
   private screenTrack: MediaStreamTrack | null = null;
   private parkedCameraTrack: MediaStreamTrack | null = null;
 
-  constructor(callbacks: PeerCallbacks) {
+  /**
+   * Async constructor — must be awaited because it fetches ICE servers
+   * before instantiating the underlying RTCPeerConnection. Use
+   * `await PeerSession.create(callbacks)` instead of `new PeerSession`.
+   */
+  static async create(callbacks: PeerCallbacks): Promise<PeerSession> {
+    const ice = await getIceServers();
+    return new PeerSession(callbacks, ice);
+  }
+
+  constructor(callbacks: PeerCallbacks, iceServers: RTCIceServer[] = FALLBACK_ICE) {
     this.callbacks = callbacks;
     this.remoteStream = new MediaStream();
-    this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS, iceCandidatePoolSize: 4 });
+    this.pc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 4 });
 
     this.pc.onicecandidate = (e) => {
       if (e.candidate) callbacks.onLocalIce(e.candidate.toJSON());

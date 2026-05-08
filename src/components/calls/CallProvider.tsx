@@ -121,8 +121,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   );
 
   const buildPeer = useCallback(
-    (callIdLocal: string, peerId: string) => {
-      const ps = new PeerSession({
+    async (callIdLocal: string, peerId: string) => {
+      const ps = await PeerSession.create({
         onLocalIce: (candidate) =>
           signaling.ice(socket, peerId, callIdLocal, candidate),
         onRemoteStream: (stream) => setRemoteStream(stream),
@@ -180,7 +180,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setRingtone('outgoing');
 
       try {
-        const ps = buildPeer(callId, peer.id);
+        const ps = await buildPeer(callId, peer.id);
         const stream = await ps.getLocalMedia(true, type === 'VIDEO');
         setLocalStream(stream);
         const offer = await ps.createOffer();
@@ -219,7 +219,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setRingtone(null);
 
     try {
-      const ps = buildPeer(cur.callId, cur.peer.id);
+      const ps = await buildPeer(cur.callId, cur.peer.id);
       const stream = await ps.getLocalMedia(true, cur.type === 'VIDEO');
       setLocalStream(stream);
       const answer = await ps.createAnswer(offer.sdp);
