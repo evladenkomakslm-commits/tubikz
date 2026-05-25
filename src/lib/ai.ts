@@ -103,7 +103,7 @@ export async function translateText(
       },
       { role: 'user', content: trimmed.slice(0, 4000) },
     ],
-    { temperature: 0.1, maxTokens: 800 },
+    { temperature: 0.1, maxTokens: 1200 },
   );
 }
 
@@ -126,7 +126,8 @@ export async function summarizeMessages(
       },
       { role: 'user', content: block.slice(0, 8000) },
     ],
-    { temperature: 0.3, maxTokens: 400 },
+    // Same reasoning-tax — summaries need headroom past the chain-of-thought.
+    { temperature: 0.3, maxTokens: 900 },
   );
 }
 
@@ -153,7 +154,10 @@ export async function smartReplies(
           `Сообщение: ${text.slice(0, 600)}`,
       },
     ],
-    { temperature: 0.7, maxTokens: 120 },
+    // GPT-OSS 20B (Pollinations anonymous) is a reasoning model — it
+    // burns tokens on hidden chain-of-thought before any visible content,
+    // so we need a generous budget or the visible reply is empty.
+    { temperature: 0.7, maxTokens: 400 },
   );
   if (!raw) return [];
   return raw
