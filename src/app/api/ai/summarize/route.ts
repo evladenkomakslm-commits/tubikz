@@ -27,9 +27,11 @@ export async function GET(req: Request) {
   if (!conversationId) {
     return NextResponse.json({ error: 'conversationId required' }, { status: 400 });
   }
+  // Pollinations anonymous tier dies on >60-line payloads; lower default
+  // and clamp hard so a misclick can't fire a 200-message request.
   const limit = Math.min(
-    Math.max(20, Number(url.searchParams.get('limit') ?? 80)),
-    300,
+    Math.max(10, Number(url.searchParams.get('limit') ?? 40)),
+    80,
   );
 
   const part = await prisma.participant.findUnique({

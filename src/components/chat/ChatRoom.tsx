@@ -259,7 +259,7 @@ export function ChatRoom({
     setSummary('loading');
     try {
       const r = await fetch(
-        `/api/ai/summarize?conversationId=${conversationId}&limit=80`,
+        `/api/ai/summarize?conversationId=${conversationId}&limit=40`,
       );
       if (!r.ok) {
         setSummary(null);

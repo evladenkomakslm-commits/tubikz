@@ -23,22 +23,32 @@ const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
 // Only model on the anonymous tier as of 2026-05 — GPT-OSS 20B served via OVH.
 // Pollinations' /models endpoint lists this as the sole option without a key.
 const POLLINATIONS_MODEL = 'openai-fast';
-const TIMEOUT_MS = 25_000;
+const TIMEOUT_MS = 40_000;
 
 export async function chat(
   messages: ChatMsg[],
-  opts: { maxTokens?: number; temperature?: number } = {},
+  opts: { maxTokens?: number; temperature?: number; retries?: number } = {},
 ): Promise<string | null> {
   const groqKey = process.env.GROQ_API_KEY;
+  const retries = opts.retries ?? 2;
   // Try Groq first, fall back to Pollinations on any error.
   if (groqKey) {
-    const out = await callOpenAI(GROQ_URL, GROQ_MODEL, messages, {
-      authHeader: `Bearer ${groqKey}`,
-      ...opts,
-    });
-    if (out) return out;
+    for (let i = 0; i <= retries; i++) {
+      const out = await callOpenAI(GROQ_URL, GROQ_MODEL, messages, {
+        authHeader: `Bearer ${groqKey}`,
+        ...opts,
+      });
+      if (out) return out;
+      if (i < retries) await new Promise((r) => setTimeout(r, 600 * (i + 1)));
+    }
   }
-  return callOpenAI(POLLINATIONS_URL, POLLINATIONS_MODEL, messages, opts);
+  // Pollinations anonymous tier is flaky — retry with exponential backoff.
+  for (let i = 0; i <= retries; i++) {
+    const out = await callOpenAI(POLLINATIONS_URL, POLLINATIONS_MODEL, messages, opts);
+    if (out) return out;
+    if (i < retries) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+  }
+  return null;
 }
 
 interface CallOpts {
@@ -111,9 +121,11 @@ export async function summarizeMessages(
   lines: Array<{ author: string; text: string }>,
 ): Promise<string | null> {
   if (lines.length === 0) return null;
+  // Anonymous Pollinations chokes on big payloads — cap inputs aggressively
+  // and trim per-line so a wall of long messages doesn't tip it over.
   const block = lines
-    .slice(-200) // hard cap to keep request small
-    .map((l) => `${l.author}: ${l.text}`)
+    .slice(-60)
+    .map((l) => `${l.author}: ${l.text.slice(0, 200)}`)
     .join('\n');
   return chat(
     [
@@ -121,13 +133,12 @@ export async function summarizeMessages(
         role: 'system',
         content:
           'Ты — помощник который кратко пересказывает чаты по-русски. ' +
-          'Дай 3-6 коротких пунктов о том, что обсуждалось. ' +
+          'Дай 3-5 коротких пунктов о том, что обсуждалось. ' +
           'Только пункты — никаких вступлений и комментариев.',
       },
-      { role: 'user', content: block.slice(0, 8000) },
+      { role: 'user', content: block.slice(0, 3500) },
     ],
-    // Same reasoning-tax — summaries need headroom past the chain-of-thought.
-    { temperature: 0.3, maxTokens: 900 },
+    { temperature: 0.3, maxTokens: 600, retries: 2 },
   );
 }
 
