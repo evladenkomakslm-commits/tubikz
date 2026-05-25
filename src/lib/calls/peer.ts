@@ -71,7 +71,15 @@ export class PeerSession {
   constructor(callbacks: PeerCallbacks, iceServers: RTCIceServer[] = FALLBACK_ICE) {
     this.callbacks = callbacks;
     this.remoteStream = new MediaStream();
-    this.pc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 4 });
+    // bundlePolicy max-bundle + rtcpMuxPolicy keep ports minimal so
+    // strict mobile NATs are less likely to drop us. iceTransportPolicy
+    // stays 'all' so a fast P2P route wins when it's actually available.
+    this.pc = new RTCPeerConnection({
+      iceServers,
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require',
+    });
 
     this.pc.onicecandidate = (e) => {
       if (e.candidate) callbacks.onLocalIce(e.candidate.toJSON());
