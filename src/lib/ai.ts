@@ -30,23 +30,35 @@ export async function chat(
   opts: { maxTokens?: number; temperature?: number; retries?: number } = {},
 ): Promise<string | null> {
   const groqKey = process.env.GROQ_API_KEY;
-  const retries = opts.retries ?? 2;
-  // Try Groq first, fall back to Pollinations on any error.
+  // Groq is rock-solid; 2 retries is plenty. Pollinations needs more.
   if (groqKey) {
-    for (let i = 0; i <= retries; i++) {
+    const groqRetries = opts.retries ?? 2;
+    for (let i = 0; i <= groqRetries; i++) {
       const out = await callOpenAI(GROQ_URL, GROQ_MODEL, messages, {
         authHeader: `Bearer ${groqKey}`,
         ...opts,
       });
       if (out) return out;
-      if (i < retries) await new Promise((r) => setTimeout(r, 600 * (i + 1)));
+      if (i < groqRetries) await new Promise((r) => setTimeout(r, 600 * (i + 1)));
     }
   }
-  // Pollinations anonymous tier is flaky — retry with exponential backoff.
-  for (let i = 0; i <= retries; i++) {
-    const out = await callOpenAI(POLLINATIONS_URL, POLLINATIONS_MODEL, messages, opts);
+  // Pollinations anonymous tier is fragile under shared load. Try with
+  // staggered backoff up to 4 times, and on later attempts try the
+  // `openai` alias which sometimes routes through a different upstream.
+  const FALLBACK_MODELS = [POLLINATIONS_MODEL, 'openai', POLLINATIONS_MODEL, 'openai'];
+  for (let i = 0; i < FALLBACK_MODELS.length; i++) {
+    const out = await callOpenAI(
+      POLLINATIONS_URL,
+      FALLBACK_MODELS[i],
+      messages,
+      opts,
+    );
     if (out) return out;
-    if (i < retries) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    // 700 → 1400 → 2100 → 2800 ms with ±300ms jitter
+    if (i < FALLBACK_MODELS.length - 1) {
+      const ms = 700 * (i + 1) + Math.random() * 600 - 300;
+      await new Promise((r) => setTimeout(r, ms));
+    }
   }
   return null;
 }
