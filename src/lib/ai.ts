@@ -20,7 +20,9 @@ export interface ChatMsg {
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const POLLINATIONS_URL = 'https://text.pollinations.ai/openai';
-const POLLINATIONS_MODEL = 'openai-large'; // their llama variant
+// Only model on the anonymous tier as of 2026-05 — GPT-OSS 20B served via OVH.
+// Pollinations' /models endpoint lists this as the sole option without a key.
+const POLLINATIONS_MODEL = 'openai-fast';
 const TIMEOUT_MS = 25_000;
 
 export async function chat(
