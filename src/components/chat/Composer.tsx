@@ -60,6 +60,7 @@ export function Composer({
   editing,
   onCancelEdit,
   onSubmitEdit,
+  lastIncoming,
 }: {
   conversationId: string;
   onSend: (input: SendInput) => Promise<void>;
@@ -69,6 +70,8 @@ export function Composer({
   editing?: EditTarget | null;
   onCancelEdit?: () => void;
   onSubmitEdit?: (id: string, content: string) => Promise<void>;
+  /** Most recent incoming text — drives AI smart-reply suggestions. */
+  lastIncoming?: { id: string; text: string } | null;
 }) {
   // Initial seed from localStorage so the half-typed message survives
   // navigation away and back. We can't read localStorage on the server,
@@ -92,7 +95,42 @@ export function Composer({
   const [locationOpen, setLocationOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  // Smart-reply chips: AI-suggested quick responses to lastIncoming.
+  // Keyed by the message id so we don't refetch when ChatRoom re-renders.
+  const [smartReplies, setSmartReplies] = useState<{
+    forMessageId: string | null;
+    options: string[];
+  }>({ forMessageId: null, options: [] });
   const attachRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Pull AI smart-reply suggestions when a new incoming text arrives.
+   * Debounced ~700ms so we don't fire on every keystroke from the peer.
+   * Skips if input has text (user is typing their own reply), if editing,
+   * or if the same message id was already processed.
+   */
+  useEffect(() => {
+    if (!lastIncoming) return;
+    if (smartReplies.forMessageId === lastIncoming.id) return;
+    if (editing) return;
+    const id = lastIncoming.id;
+    const text = lastIncoming.text;
+    const t = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/ai/smart-reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text }),
+        });
+        if (!r.ok) return;
+        const d = (await r.json()) as { replies?: string[] };
+        setSmartReplies({ forMessageId: id, options: d.replies ?? [] });
+      } catch {
+        /* silent */
+      }
+    }, 700);
+    return () => clearTimeout(t);
+  }, [lastIncoming, editing, smartReplies.forMessageId]);
 
   // Hydrate the draft when the conversation changes. Cleared by send.
   useEffect(() => {
@@ -369,6 +407,30 @@ export function Composer({
           e.target.value = '';
         }}
       />
+
+      {/* Smart-reply chips — hide while typing your own reply or while
+          editing / replying so they don't crowd the action chip. */}
+      {!editing &&
+        !replyTo &&
+        !text.trim() &&
+        smartReplies.options.length > 0 && (
+          <div className="flex gap-1.5 overflow-x-auto px-1 pb-1.5 -mb-1 no-scrollbar">
+            {smartReplies.options.map((opt, i) => (
+              <button
+                key={`${smartReplies.forMessageId}-${i}`}
+                onClick={() => {
+                  // Send immediately — quick-reply UX.
+                  setSmartReplies({ forMessageId: null, options: [] });
+                  void dispatchText(opt);
+                }}
+                className="shrink-0 inline-flex items-center gap-1 text-[13px] px-3 py-1.5 rounded-full bg-bg-elevated hover:bg-bg-hover border border-border/60 text-text transition-colors"
+              >
+                <span className="opacity-60 text-[10px]">✨</span>
+                {opt}
+              </button>
+            ))}
+          </div>
+        )}
 
       {/* Reply / edit chip — sits just above the input row. */}
       <AnimatePresence>

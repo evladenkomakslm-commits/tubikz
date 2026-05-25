@@ -14,6 +14,7 @@ import {
   PinOff,
   Download,
   File as FileIcon,
+  Languages,
   MapPin,
   Image as ImageIconSm,
   Video as VideoIconSm,
@@ -67,6 +68,10 @@ export function MessageBubble({
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuOpensUp, setMenuOpensUp] = useState(false);
   const [bursts, setBursts] = useState<Burst[]>([]);
+  // Inline AI translation. `null` = no translation requested yet,
+  // 'loading' while the request is in-flight, otherwise the translated
+  // text rendered below the original.
+  const [translation, setTranslation] = useState<string | null | 'loading'>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
@@ -109,6 +114,42 @@ export function MessageBubble({
       haptic('tap');
     }
     onReact(emoji);
+  }
+
+  /** Translate this message to Russian via /api/ai/translate. Toggles
+   *  off if a translation is already showing. */
+  async function translate() {
+    if (translation && translation !== 'loading') {
+      setTranslation(null);
+      return;
+    }
+    const src = (message.content ?? '').trim();
+    if (!src) return;
+    setTranslation('loading');
+    try {
+      const r = await fetch('/api/ai/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: src, targetLang: 'ru' }),
+      });
+      if (!r.ok) {
+        setTranslation(null);
+        const data = await r.json().catch(() => ({}));
+        toast.push({
+          message:
+            data?.error === 'rate_limited'
+              ? `подожди ${data.retryAfter ?? 60}с`
+              : 'перевод не получился',
+          kind: 'error',
+        });
+        return;
+      }
+      const data = await r.json();
+      setTranslation(data.translation ?? null);
+    } catch {
+      setTranslation(null);
+      toast.push({ message: 'перевод не получился', kind: 'error' });
+    }
   }
 
   async function copyContent() {
@@ -324,6 +365,29 @@ export function MessageBubble({
               {/* Spacer for the absolutely-positioned time so it doesn't overlap the last word. */}
               <span className="inline-block w-16 align-bottom" aria-hidden />
             </p>
+          )}
+
+          {/* Inline AI translation — renders under the original text. */}
+          {isText && translation && (
+            <div
+              className={cn(
+                'mt-1 mb-2 px-2 py-1.5 rounded-lg text-[14px] border-l-2',
+                isMe
+                  ? 'border-white/70 bg-white/10 text-white/90'
+                  : 'border-accent bg-bg-elevated text-text',
+              )}
+            >
+              <div className={cn('flex items-center gap-1 text-[10px] uppercase tracking-wider mb-0.5', isMe ? 'text-white/70' : 'text-accent')}>
+                <Languages className="w-3 h-3" /> перевод
+              </div>
+              {translation === 'loading' ? (
+                <span className={cn('text-[12px]', isMe ? 'text-white/70' : 'text-text-muted')}>
+                  переводим…
+                </span>
+              ) : (
+                <span className="whitespace-pre-wrap break-words">{translation}</span>
+              )}
+            </div>
           )}
 
           {/* Link previews — at most 2 cards under the text bubble. */}
@@ -699,6 +763,20 @@ export function MessageBubble({
                   label="копировать"
                   onClick={() => {
                     copyContent();
+                    setMenuOpen(false);
+                  }}
+                />
+              )}
+              {message.type === 'TEXT' && message.content && (
+                <MenuItem
+                  icon={<Languages className="w-4 h-4" />}
+                  label={
+                    translation && translation !== 'loading'
+                      ? 'скрыть перевод'
+                      : 'перевести'
+                  }
+                  onClick={() => {
+                    translate();
                     setMenuOpen(false);
                   }}
                 />

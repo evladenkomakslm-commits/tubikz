@@ -11,6 +11,7 @@ import {
   Loader2,
   MoreVertical,
   Pin,
+  Sparkles,
   Upload,
   UserX,
   X,
@@ -108,6 +109,8 @@ export function ChatRoom({
   const [dragOver, setDragOver] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
+  // AI summary modal — text fills in via /api/ai/summarize.
+  const [summary, setSummary] = useState<string | null | 'loading'>(null);
   const dropDepthRef = useRef(0);
   const headerMenuRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -246,6 +249,35 @@ export function ChatRoom({
         mediaMimeType: data.mimeType,
         content: type === 'FILE' ? `${finalFile.name}|${finalFile.size}` : undefined,
       });
+    }
+  }
+
+  /** Pull an AI summary of the last ~80 messages of this chat. Opens
+   *  a modal that shows "выжимка беседы" — handy for catching up on
+   *  long group threads or skipping the small-talk. */
+  async function summarizeChat() {
+    setSummary('loading');
+    try {
+      const r = await fetch(
+        `/api/ai/summarize?conversationId=${conversationId}&limit=80`,
+      );
+      if (!r.ok) {
+        setSummary(null);
+        const data = await r.json().catch(() => ({}));
+        toast.push({
+          message:
+            data?.error === 'rate_limited'
+              ? `подожди ${data.retryAfter ?? 60}с`
+              : 'не удалось получить выжимку',
+          kind: 'error',
+        });
+        return;
+      }
+      const data = await r.json();
+      setSummary(data.summary ?? 'нет данных');
+    } catch {
+      setSummary(null);
+      toast.push({ message: 'не удалось получить выжимку', kind: 'error' });
     }
   }
 
@@ -978,6 +1010,11 @@ export function ChatRoom({
                   )}
                   <div className="h-px bg-border my-1" />
                   <HMenuItem
+                    icon={<Sparkles className="w-4 h-4 text-accent" />}
+                    label="выжимка беседы"
+                    onClick={() => { summarizeChat(); setMenuOpen(false); }}
+                  />
+                  <HMenuItem
                     icon={isArchived ? <ArchiveRestore className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
                     label={isArchived ? 'из архива' : 'в архив'}
                     onClick={() => { toggleArchive(); setMenuOpen(false); }}
@@ -1191,6 +1228,16 @@ export function ChatRoom({
           editing={editing}
           onCancelEdit={() => setEditing(null)}
           onSubmitEdit={handleEditSubmit}
+          lastIncoming={(() => {
+            // Find the most recent NON-deleted TEXT message from someone else.
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const m = messages[i];
+              if (m.senderId === currentUserId) continue;
+              if (m.type !== 'TEXT' || m.deletedAt || !m.content) continue;
+              return { id: m.id, text: m.content };
+            }
+            return null;
+          })()}
         />
       )}
 
@@ -1225,6 +1272,64 @@ export function ChatRoom({
           onChanged={reload}
         />
       )}
+
+      {summary !== null && (
+        <SummaryModal
+          state={summary}
+          onClose={() => setSummary(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─────────── AI summary modal ─────────── */
+
+function SummaryModal({
+  state,
+  onClose,
+}: {
+  state: string | 'loading';
+  onClose: () => void;
+}) {
+  if (typeof document === 'undefined') return null;
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-end md:items-center justify-center"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full md:w-[480px] max-h-[80dvh] flex flex-col bg-bg-panel md:rounded-2xl rounded-t-2xl border-t md:border border-border shadow-2xl pb-[max(env(safe-area-inset-bottom),0.75rem)]"
+      >
+        <header className="flex items-center gap-3 px-4 py-3 border-b border-border">
+          <Sparkles className="w-5 h-5 text-accent" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-[16px]">выжимка беседы</div>
+            <div className="text-[12px] text-text-muted">
+              {state === 'loading' ? 'думаем…' : 'AI пересказ последних сообщений'}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-full hover:bg-bg-hover"
+            aria-label="закрыть"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </header>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+          {state === 'loading' ? (
+            <div className="flex items-center justify-center py-8 text-text-muted">
+              <Loader2 className="w-5 h-5 animate-spin" />
+            </div>
+          ) : (
+            <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
+              {state}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
