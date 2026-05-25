@@ -1111,6 +1111,11 @@ export function ChatRoom({
                   )}
                   <div className="h-px bg-border my-1" />
                   <HMenuItem
+                    icon={<Sparkles className="w-4 h-4 text-accent" />}
+                    label="выжимка беседы"
+                    onClick={() => { summarizeChat(); setMenuOpen(false); }}
+                  />
+                  <HMenuItem
                     icon={
                       isArchived ? (
                         <ArchiveRestore className="w-4 h-4" />
