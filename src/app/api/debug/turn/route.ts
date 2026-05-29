@@ -3,12 +3,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
 /**
- * Verbose TURN diagnostic. Shows whether the env vars are visible to
- * the runtime, what URL the server would call, the HTTP status, and a
- * truncated response body — so the user can see at a glance why TURN
- * isn't being attached to the ICE list.
- *
- * Auth-gated and intentionally verbose for debugging only.
+ * Verbose TURN diagnostic for Cloudflare Realtime. Shows whether the env
+ * vars are visible, the HTTP status of the credentials request, and a
+ * truncated response body — so any misconfig is obvious from the profile
+ * panel without server logs. Auth-gated, debugging only.
  */
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -16,36 +14,42 @@ export async function GET() {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const apiKey = process.env.METERED_API_KEY ?? null;
-  const appName = process.env.METERED_APP_NAME ?? null;
+  const tokenId = process.env.CLOUDFLARE_TURN_TOKEN_ID ?? null;
+  const apiToken = process.env.CLOUDFLARE_TURN_API_TOKEN ?? null;
 
   const out: Record<string, unknown> = {
-    metered_api_key_set: !!apiKey,
-    metered_api_key_first_chars: apiKey ? apiKey.slice(0, 6) + '…' : null,
-    metered_api_key_length: apiKey ? apiKey.length : 0,
-    metered_app_name: appName,
+    cf_token_id_set: !!tokenId,
+    cf_token_id_first_chars: tokenId ? tokenId.slice(0, 8) + '…' : null,
+    cf_api_token_set: !!apiToken,
+    cf_api_token_length: apiToken ? apiToken.length : 0,
     manual_turn_set:
       !!process.env.TURN_URL &&
       !!process.env.TURN_USERNAME &&
       !!process.env.TURN_CREDENTIAL,
   };
 
-  if (apiKey && appName) {
-    const url = `https://${appName}.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`;
-    out.metered_url_tried = url.replace(apiKey, '<key>');
+  if (tokenId && apiToken) {
+    const url = `https://rtc.live.cloudflare.com/v1/turn/keys/${tokenId}/credentials/generate-ice-servers`;
+    out.cf_url_tried = url;
     try {
-      const res = await fetch(url);
-      out.metered_status = res.status;
-      out.metered_status_text = res.statusText;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${apiToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ ttl: 86400 }),
+      });
+      out.cf_status = res.status;
+      out.cf_status_text = res.statusText;
       const text = await res.text();
-      out.metered_body_first_500 = text.slice(0, 500);
+      out.cf_body_first_500 = text.slice(0, 500);
       try {
-        const parsed = JSON.parse(text);
-        if (Array.isArray(parsed)) {
-          out.servers_count = parsed.length;
-          out.first_server_urls =
-            parsed[0]?.urls ?? null;
-        }
+        const parsed = JSON.parse(text) as {
+          iceServers?: { urls?: string | string[] };
+        };
+        const urls = parsed.iceServers?.urls;
+        out.turn_urls = Array.isArray(urls) ? urls : urls ? [urls] : [];
       } catch {
         out.parse_error = 'response was not valid JSON';
       }
@@ -55,7 +59,6 @@ export async function GET() {
   }
 
   return NextResponse.json(out, {
-    // Pretty-print in the browser viewer.
     headers: { 'content-type': 'application/json; charset=utf-8' },
   });
 }

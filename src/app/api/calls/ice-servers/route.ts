@@ -14,25 +14,18 @@ const STATIC_STUN: IceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
-// NOTE: metered.ca's old public "openrelayproject" relay
-// (openrelay.metered.ca) is dead — ports no longer accept connections.
-// It was previously hardcoded here but only inflated the TURN count
-// without relaying anything. A working relay now requires real
-// credentials (METERED_API_KEY or a manual TURN_* trio).
-
 let cache: { servers: IceServer[]; expiresAt: number } | null = null;
 
 /**
  * Returns the ICE-server list a client should use for WebRTC.
  *
- * Always includes a few public STUNs. If METERED_API_KEY is set, also
- * returns short-lived TURN credentials from metered.ca's free tier
- * (50 GB / month). Without TURN, peers behind symmetric NAT (most
- * mobile carriers) can't connect across networks — that's why a
- * tubikz↔batya call only works on the same Wi-Fi until TURN is wired.
+ * Always includes public STUN. If CLOUDFLARE_TURN_TOKEN_ID +
+ * CLOUDFLARE_TURN_API_TOKEN are set, mints short-lived TURN credentials
+ * from Cloudflare Realtime (1 TB/month free, no expiry). Without TURN,
+ * peers behind symmetric NAT (most mobile carriers) can't connect across
+ * networks. Also honors a manual TURN_* trio as a last resort.
  *
- * Result is cached for 1h on the server so we aren't hammering the
- * metered API on every call setup.
+ * Cloudflare creds are TTL'd (24h) and cached server-side for 1h.
  */
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -46,38 +39,44 @@ export async function GET() {
 
   const servers: IceServer[] = [...STATIC_STUN];
 
-  // Fold in Metered TURN if configured.
-  const meteredKey = process.env.METERED_API_KEY;
-  const meteredApp = process.env.METERED_APP_NAME;
-  if (meteredKey && meteredApp) {
+  // Cloudflare Realtime TURN.
+  const cfTokenId = process.env.CLOUDFLARE_TURN_TOKEN_ID;
+  const cfApiToken = process.env.CLOUDFLARE_TURN_API_TOKEN;
+  if (cfTokenId && cfApiToken) {
     try {
       const res = await fetch(
-        `https://${meteredApp}.metered.live/api/v1/turn/credentials?apiKey=${meteredKey}`,
-        { next: { revalidate: 0 } },
+        `https://rtc.live.cloudflare.com/v1/turn/keys/${cfTokenId}/credentials/generate-ice-servers`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${cfApiToken}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ ttl: 86400 }),
+        },
       );
       if (res.ok) {
-        const data = (await res.json()) as IceServer[];
-        if (Array.isArray(data)) {
-          servers.push(...data);
+        const data = (await res.json()) as { iceServers?: IceServer | IceServer[] };
+        // Cloudflare returns either a single iceServers object or an array.
+        if (Array.isArray(data.iceServers)) {
+          servers.push(...data.iceServers);
+        } else if (data.iceServers) {
+          servers.push(data.iceServers);
         }
       } else {
-        console.warn('[ice] metered request failed', res.status);
+        console.warn('[ice] cloudflare request failed', res.status);
       }
     } catch (e) {
-      console.warn('[ice] metered fetch error', e);
+      console.warn('[ice] cloudflare fetch error', e);
     }
   }
 
-  // Fall back to a manual TURN if the user wired one explicitly.
+  // Manual TURN trio as a last-resort override.
   const turnUrl = process.env.TURN_URL;
   const turnUser = process.env.TURN_USERNAME;
   const turnCred = process.env.TURN_CREDENTIAL;
   if (turnUrl && turnUser && turnCred) {
-    servers.push({
-      urls: turnUrl,
-      username: turnUser,
-      credential: turnCred,
-    });
+    servers.push({ urls: turnUrl, username: turnUser, credential: turnCred });
   }
 
   cache = { servers, expiresAt: now + 60 * 60 * 1000 };

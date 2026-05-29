@@ -637,7 +637,8 @@ function CallDiagnostic() {
           {!state.relayWorks && (
             <div className="mt-2 text-text-muted leading-snug">
               звонки между разными сетями НЕ пройдут — нет живого TURN.
-              нужен рабочий ключ metered.ca или Cloudflare TURN.
+              проверь CLOUDFLARE_TURN_TOKEN_ID и CLOUDFLARE_TURN_API_TOKEN
+              в Render.
             </div>
           )}
           {state.diag && (
