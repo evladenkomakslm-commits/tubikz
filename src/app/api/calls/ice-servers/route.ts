@@ -14,35 +14,11 @@ const STATIC_STUN: IceServer[] = [
   { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
-/**
- * Public OpenRelay TURN — metered.ca's free shared relay. No API key
- * required. We always include it so cross-network calls work even when
- * the user hasn't (or has misconfigured) their own metered.ca app.
- * Best-effort: bandwidth is shared, peak load may degrade quality.
- * METERED_API_KEY (private app) is preferred when present.
- */
-const PUBLIC_OPENRELAY: IceServer[] = [
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-  {
-    urls: 'turns:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
-];
+// NOTE: metered.ca's old public "openrelayproject" relay
+// (openrelay.metered.ca) is dead — ports no longer accept connections.
+// It was previously hardcoded here but only inflated the TURN count
+// without relaying anything. A working relay now requires real
+// credentials (METERED_API_KEY or a manual TURN_* trio).
 
 let cache: { servers: IceServer[]; expiresAt: number } | null = null;
 
@@ -68,9 +44,7 @@ export async function GET() {
     return NextResponse.json({ iceServers: cache.servers });
   }
 
-  // Always include STUN + public OpenRelay TURN so cross-network calls
-  // work out-of-the-box, even before any private-tier credentials.
-  const servers: IceServer[] = [...STATIC_STUN, ...PUBLIC_OPENRELAY];
+  const servers: IceServer[] = [...STATIC_STUN];
 
   // Fold in Metered TURN if configured.
   const meteredKey = process.env.METERED_API_KEY;

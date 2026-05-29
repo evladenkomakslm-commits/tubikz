@@ -500,9 +500,46 @@ function NotificationsCard() {
 }
 
 /**
+ * Gather ICE candidates against the given servers and resolve true if any
+ * `typ relay` candidate appears within ~6s — the only definitive proof a
+ * TURN server actually relays (a configured-but-dead TURN never produces
+ * one). Cleans up the throwaway PeerConnection afterward.
+ */
+async function probeRelay(iceServers: RTCIceServer[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    let pc: RTCPeerConnection;
+    try {
+      pc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 1 });
+    } catch {
+      resolve(false);
+      return;
+    }
+    let done = false;
+    const finish = (val: boolean) => {
+      if (done) return;
+      done = true;
+      try {
+        pc.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(val);
+    };
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return;
+      if (e.candidate.candidate.includes(' typ relay')) finish(true);
+    };
+    pc.createDataChannel('probe');
+    pc.createOffer()
+      .then((o) => pc.setLocalDescription(o))
+      .catch(() => finish(false));
+    setTimeout(() => finish(false), 6000);
+  });
+}
+
+/**
  * Visual debugger for the call ICE-server list. Fetches /api/calls/ice-servers
- * and shows what the client would actually use, so you can tell at a glance
- * whether TURN (metered.ca) is plugged in correctly without opening DevTools.
+ * and shows what the client would actually use, plus a live relay probe.
  */
 function CallDiagnostic() {
   const [state, setState] = useState<
@@ -514,10 +551,18 @@ function CallDiagnostic() {
         turn: number;
         servers: string[];
         diag: Record<string, unknown> | null;
+        relayWorks: boolean;
       }
     | { kind: 'err'; msg: string }
   >({ kind: 'idle' });
 
+  /**
+   * Real relay test: build an RTCPeerConnection with the server's ICE
+   * list and gather candidates. A `typ relay` candidate only appears if
+   * a TURN server actually allocated a relay for us — that's the true
+   * proof cross-network calls will work, vs just counting configured
+   * URLs (which can be dead, like the old OpenRelay).
+   */
   async function check() {
     setState({ kind: 'loading' });
     try {
@@ -531,13 +576,17 @@ function CallDiagnostic() {
         setState({ kind: 'err', msg: ice?.error ?? 'не удалось получить ответ' });
         return;
       }
-      const servers = ice.iceServers as Array<{ urls: string | string[] }>;
+      const servers = ice.iceServers as RTCIceServer[];
       const flat = servers.flatMap((s) =>
         Array.isArray(s.urls) ? s.urls : [s.urls],
       );
       const stun = flat.filter((u) => u.startsWith('stun:')).length;
       const turn = flat.filter((u) => u.startsWith('turn')).length;
-      setState({ kind: 'ok', stun, turn, servers: flat, diag });
+
+      // Live relay probe.
+      const relayWorks = await probeRelay(servers);
+
+      setState({ kind: 'ok', stun, turn, servers: flat, diag, relayWorks });
     } catch (e) {
       setState({
         kind: 'err',
@@ -573,14 +622,24 @@ function CallDiagnostic() {
           </div>
           <div className="flex items-center justify-between">
             <span>TURN серверов:</span>
+            <span className="text-text">{state.turn}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>relay реально работает:</span>
             <span
               className={
-                state.turn > 0 ? 'text-success font-medium' : 'text-danger'
+                state.relayWorks ? 'text-success font-medium' : 'text-danger font-medium'
               }
             >
-              {state.turn} {state.turn === 0 && '— TURN не настроен'}
+              {state.relayWorks ? 'да ✓' : 'нет ✗'}
             </span>
           </div>
+          {!state.relayWorks && (
+            <div className="mt-2 text-text-muted leading-snug">
+              звонки между разными сетями НЕ пройдут — нет живого TURN.
+              нужен рабочий ключ metered.ca или Cloudflare TURN.
+            </div>
+          )}
           {state.diag && (
             <details className="mt-2 border-t border-border/60 pt-2">
               <summary className="cursor-pointer text-text-muted">
@@ -590,12 +649,6 @@ function CallDiagnostic() {
                 {JSON.stringify(state.diag, null, 2)}
               </pre>
             </details>
-          )}
-          {state.turn === 0 && (
-            <div className="mt-2 text-text-muted leading-snug">
-              без TURN звонки между разными сетями не пройдут. проверь
-              METERED_API_KEY и METERED_APP_NAME в Render.
-            </div>
           )}
         </div>
       )}
